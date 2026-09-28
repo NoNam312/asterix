@@ -1,7 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Check, ChevronLeft, ChevronRight, LogOut, Plus, Swords } from "lucide-react";
+import {
+  CalendarArrowUp,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  CopyPlus,
+  Flag,
+  LogOut,
+  Pencil,
+  Play,
+  Plus,
+  RotateCcw,
+  Square,
+  Swords,
+  Trash2,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   addDays,
@@ -16,10 +32,18 @@ import {
 } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { levelInfo } from "@/lib/levels";
-import { CATEGORIES, type Profile, type Quest, type QuestStatus } from "@/lib/quests";
+import {
+  CATEGORIES,
+  CATEGORY_KEYS,
+  type Category,
+  type Profile,
+  type Quest,
+  type QuestStatus,
+} from "@/lib/quests";
 import { signOut } from "@/app/login/actions";
 import { ActiveQuestBar } from "./active-quest-bar";
 import { CalendarGrid } from "./calendar-grid";
+import { ContextMenu, type MenuItem } from "./context-menu";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -38,11 +62,17 @@ export function Planner({ profile }: { profile: Profile }) {
 
 type Toast = { xp: number; newLevel?: number } | { failed: string };
 
+type Menu =
+  | { kind: "quest"; quest: Quest; x: number; y: number }
+  | { kind: "slot"; start: Date; x: number; y: number };
+
 function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const supabase = useMemo(() => createClient(), []);
   const [profile, setProfile] = useState(initialProfile);
   const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const [view, setView] = useState<View>("week");
   const [date, setDate] = useState(() => startOfDay(new Date()));
   const [quests, setQuests] = useState<Quest[]>([]);
@@ -212,6 +242,110 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     setStatus(id, status).then((err) => err && setError(err));
   }
 
+  /** Copies a quest to a new start time as a fresh, planned quest. */
+  async function duplicate(q: Quest, start: Date) {
+    const { error } = await supabase.from("quests").insert({
+      title: q.title,
+      category: q.category,
+      notes: q.notes,
+      start_at: start.toISOString(),
+      duration_min: q.duration_min,
+      difficulty: q.difficulty,
+      xp: q.xp,
+    });
+    if (error) setError(error.message);
+    refresh();
+  }
+
+  async function changeCategory(q: Quest, category: Category) {
+    const finished = q.status === "completed" || q.status === "failed";
+    const { rank, xp } = assessQuest({
+      title: q.title,
+      notes: q.notes,
+      category,
+      durationMin: q.duration_min,
+    });
+    const { error } = await supabase
+      .from("quests")
+      .update({ category, ...(finished ? {} : { difficulty: rank, xp }) })
+      .eq("id", q.id);
+    if (error) setError(error.message);
+    refresh();
+  }
+
+  function questMenuItems(q: Quest): MenuItem[] {
+    const start = new Date(q.start_at);
+    const finished = q.status === "completed" || q.status === "failed";
+    return [
+      { label: "Open", icon: <Pencil />, onSelect: () => openEdit(q) },
+      { separator: true },
+      ...(q.status === "planned"
+        ? [{ label: "Start quest", icon: <Play />, onSelect: () => runStatus(q.id, "active") }]
+        : []),
+      ...(q.status === "active"
+        ? [{ label: "Stop timer", icon: <Square />, onSelect: () => runStatus(q.id, "planned") }]
+        : []),
+      ...(!finished
+        ? [
+            { label: "Mark complete", icon: <Check />, onSelect: () => runStatus(q.id, "completed") },
+            { label: "Fail quest", icon: <Flag />, onSelect: () => runStatus(q.id, "failed") },
+          ]
+        : [
+            {
+              label: q.status === "completed" ? "Undo complete" : "Undo fail",
+              icon: <RotateCcw />,
+              onSelect: () => runStatus(q.id, "planned"),
+            },
+          ]),
+      { separator: true },
+      {
+        label: "Duplicate",
+        icon: <Copy />,
+        onSelect: () => duplicate(q, addMinutes(start, q.duration_min)),
+      },
+      { label: "Copy to tomorrow", icon: <CopyPlus />, onSelect: () => duplicate(q, addDays(start, 1)) },
+      {
+        label: "Move to tomorrow",
+        icon: <CalendarArrowUp />,
+        disabled: q.status !== "planned",
+        onSelect: () => reschedule(q, addDays(start, 1), q.duration_min),
+      },
+      { separator: true },
+      {
+        custom: (
+          <div className="flex items-center gap-1 px-2 py-1.5">
+            <span className="mr-auto text-xs text-muted">Category</span>
+            {CATEGORY_KEYS.map((key) => (
+              <button
+                key={key}
+                title={CATEGORIES[key].label}
+                onClick={() => {
+                  closeMenu();
+                  if (key !== q.category) changeCategory(q, key);
+                }}
+                className="grid size-5 place-items-center rounded-full transition hover:scale-110"
+                style={{ background: CATEGORIES[key].soft }}
+              >
+                <span
+                  className={`rounded-full ${key === q.category ? "size-3" : "size-2"}`}
+                  style={{ background: CATEGORIES[key].color }}
+                />
+              </button>
+            ))}
+          </div>
+        ),
+      },
+      { separator: true },
+      { label: "Delete", icon: <Trash2 />, danger: true, onSelect: () => remove(q.id).then((e) => e && setError(e)) },
+    ];
+  }
+
+  function slotMenuItems(start: Date): MenuItem[] {
+    return [
+      { label: `New quest at ${formatTime(start)}`, icon: <Plus />, shortcut: "N", onSelect: () => openNew(start) },
+    ];
+  }
+
   async function reschedule(q: Quest, start: Date, duration: number) {
     const patch = { start_at: start.toISOString(), duration_min: duration };
     // Optimistic update so the block doesn't snap back while saving.
@@ -282,7 +416,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                 const failed = q.status === "failed";
                 const color = CATEGORIES[q.category].color;
                 return (
-                  <li key={q.id} className="flex items-center gap-1.5 rounded-md px-1 hover:bg-surface-hover">
+                  <li
+                    key={q.id}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMenu({ kind: "quest", quest: q, x: e.clientX, y: e.clientY });
+                    }}
+                    className="flex items-center gap-1.5 rounded-md px-1 hover:bg-surface-hover"
+                  >
                     <button
                       title={done ? "Undo" : "Mark complete"}
                       disabled={failed}
@@ -388,6 +529,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           onCreate={openNew}
           onEdit={openEdit}
           onReschedule={reschedule}
+          onQuestMenu={(quest, x, y) => setMenu({ kind: "quest", quest, x, y })}
+          onSlotMenu={(start, x, y) => setMenu({ kind: "slot", start, x, y })}
         />
       </main>
 
@@ -399,6 +542,17 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           onSave={save}
           onDelete={remove}
           onStatus={setStatus}
+        />
+      )}
+
+      {menu && (
+        <ContextMenu
+          key={`${menu.x},${menu.y}`}
+          x={menu.x}
+          y={menu.y}
+          title={menu.kind === "quest" ? menu.quest.title : undefined}
+          items={menu.kind === "quest" ? questMenuItems(menu.quest) : slotMenuItems(menu.start)}
+          onClose={closeMenu}
         />
       )}
 

@@ -24,6 +24,8 @@ type Props = {
   onCreate: (start: Date) => void;
   onEdit: (quest: Quest) => void;
   onReschedule: (quest: Quest, start: Date, durationMin: number) => void;
+  onQuestMenu: (quest: Quest, x: number, y: number) => void;
+  onSlotMenu: (start: Date, x: number, y: number) => void;
 };
 
 type Drag = {
@@ -36,7 +38,15 @@ type Drag = {
   colWidth: number; // measured when the drag starts
 };
 
-export function CalendarGrid({ days, quests, onCreate, onEdit, onReschedule }: Props) {
+export function CalendarGrid({
+  days,
+  quests,
+  onCreate,
+  onEdit,
+  onReschedule,
+  onQuestMenu,
+  onSlotMenu,
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -103,11 +113,20 @@ export function CalendarGrid({ days, quests, onCreate, onEdit, onReschedule }: P
     setDrag(d);
   }
 
+  function slotAt(e: React.MouseEvent<HTMLDivElement>, day: Date) {
+    const minutes = clamp(Math.floor((e.nativeEvent.offsetY / HOUR_HEIGHT) * 2) * 30, 0, 23 * 60 + 30);
+    return addMinutes(startOfDay(day), minutes);
+  }
+
   function handleColumnClick(e: React.MouseEvent<HTMLDivElement>, day: Date) {
     if (e.target !== e.currentTarget) return;
-    const y = e.nativeEvent.offsetY;
-    const minutes = clamp(Math.floor((y / HOUR_HEIGHT) * 2) * 30, 0, 23 * 60 + 30);
-    onCreate(addMinutes(startOfDay(day), minutes));
+    onCreate(slotAt(e, day));
+  }
+
+  function handleColumnMenu(e: React.MouseEvent<HTMLDivElement>, day: Date) {
+    if (e.target !== e.currentTarget) return;
+    e.preventDefault();
+    onSlotMenu(slotAt(e, day), e.clientX, e.clientY);
   }
 
   // Apply the in-progress drag so the block follows the pointer.
@@ -164,6 +183,7 @@ export function CalendarGrid({ days, quests, onCreate, onEdit, onReschedule }: P
                 <div
                   key={day.toISOString()}
                   onClick={(e) => handleColumnClick(e, day)}
+                  onContextMenu={(e) => handleColumnMenu(e, day)}
                   className="relative flex-1 cursor-cell border-l border-line"
                 >
                   {HOURS.map((h) => (
@@ -191,6 +211,10 @@ export function CalendarGrid({ days, quests, onCreate, onEdit, onReschedule }: P
                       col={layout.get(q.id)!}
                       dragging={drag?.quest.id === q.id}
                       onPointerDown={(e, mode) => startDrag(e, q, mode)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onQuestMenu(q, e.clientX, e.clientY);
+                      }}
                     />
                   ))}
                 </div>
@@ -208,11 +232,13 @@ function QuestBlock({
   col,
   dragging,
   onPointerDown,
+  onContextMenu,
 }: {
   quest: Quest;
   col: { index: number; count: number };
   dragging: boolean;
   onPointerDown: (e: React.PointerEvent, mode: Drag["mode"]) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const start = new Date(quest.start_at);
   const end = addMinutes(start, quest.duration_min);
@@ -226,6 +252,7 @@ function QuestBlock({
   return (
     <div
       onPointerDown={(e) => onPointerDown(e, "move")}
+      onContextMenu={onContextMenu}
       className={`group absolute z-10 cursor-grab touch-none overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-xs transition-shadow ${
         dragging ? "z-30 shadow-lg ring-1 ring-black/5" : "hover:shadow-md"
       } ${done || failed ? "opacity-60" : ""} ${active ? "ring-2 ring-offset-1" : ""}`}
