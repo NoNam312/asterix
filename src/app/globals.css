@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+  Design tokens: Notion-like, but leaning gray with cool accents.
+  Use them as Tailwind classes, e.g. bg-surface, text-muted, border-line, bg-accent.
+*/
+@theme {
+  --color-canvas: #ffffff;        /* page background */
+  --color-surface: #f6f7f9;       /* sidebar, cards */
+  --color-surface-hover: #eef0f3;
+  --color-line: #e3e6ea;          /* borders */
+  --color-ink: #1f2328;           /* main text */
+  --color-muted: #6b7280;         /* secondary text */
+  --color-faint: #9aa1ab;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-accent: #3b6fd8;        /* primary actions (cool blue) */
+  --color-accent-hover: #2f5cbb;
+  --color-accent-soft: #e8effc;
+  --color-xp: #0f9f8f;            /* XP / progress (teal) */
+  --color-xp-soft: #e0f5f2;
+  --color-danger: #d14343;
+  --color-danger-soft: #fbeaea;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
 }
