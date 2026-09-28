@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   CalendarArrowUp,
   Check,
@@ -9,6 +9,8 @@ import {
   Copy,
   CopyPlus,
   Flag,
+  Flame,
+  NotebookText,
   LogOut,
   Pencil,
   Play,
@@ -44,6 +46,7 @@ import { signOut } from "@/app/login/actions";
 import { ActiveQuestBar } from "./active-quest-bar";
 import { CalendarGrid } from "./calendar-grid";
 import { ContextMenu, type MenuItem } from "./context-menu";
+import { DailySummary, type MissedNotice } from "./daily-summary";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -60,7 +63,13 @@ export function Planner({ profile }: { profile: Profile }) {
   return inBrowser ? <PlannerView profile={profile} /> : <div className="h-screen bg-canvas" />;
 }
 
-type Toast = { xp: number; newLevel?: number } | { failed: string };
+type Toast =
+  | { xp: number; newLevel?: number; bonus?: number; streak?: number }
+  | { failed: string; lost: number };
+
+type Streak = { current: number; best: number; todayDone: boolean };
+
+const SUMMARY_SEEN_KEY = "questlog:summary-seen";
 
 type Menu =
   | { kind: "quest"; quest: Quest; x: number; y: number }
@@ -72,6 +81,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [streak, setStreak] = useState<Streak>({ current: 0, best: 0, todayDone: false });
+  const [summary, setSummary] = useState<{ day: Date; notice?: MissedNotice } | null>(null);
+  const missedCheckDone = useRef(false);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [view, setView] = useState<View>("week");
   const [date, setDate] = useState(() => startOfDay(new Date()));
@@ -106,14 +118,26 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   const refresh = useCallback(async () => {
     const today = startOfDay(new Date());
-    const [range, todays, active] = await Promise.all([
+    const [range, todays, active, latestBonus, bestBonus] = await Promise.all([
       fetchRange(rangeStart, rangeEnd),
       fetchRange(today, addDays(today, 1)),
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
+      supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
     ]);
     setQuests(range);
     setTodayQuests(todays);
     setActiveQuest((active.data as Quest | null) ?? null);
+
+    // The streak is alive if the goal was reached today or yesterday.
+    const latest = latestBonus.data as { day: string; streak: number } | null;
+    const todayKey = toDateInput(today);
+    const alive = latest && (latest.day === todayKey || latest.day === toDateInput(addDays(today, -1)));
+    setStreak({
+      current: alive ? latest.streak : 0,
+      best: (bestBonus.data as { streak: number } | null)?.streak ?? 0,
+      todayDone: latest?.day === todayKey,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the range timestamps below
   }, [supabase, fetchRange, rangeStart.getTime(), rangeEnd.getTime()]);
 
@@ -121,6 +145,34 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data for the visible range
     refresh();
   }, [refresh]);
+
+  // Once per visit: fail quests left unfinished on previous days, then show yesterday's report.
+  useEffect(() => {
+    if (missedCheckDone.current) return;
+    missedCheckDone.current = true;
+    (async () => {
+      const today = startOfDay(new Date());
+      const yesterday = addDays(today, -1);
+      const { data } = await supabase.rpc("fail_missed_quests", { cutoff: today.toISOString() });
+      const res = data as { missed: number; xp_lost: number; total_xp: number } | null;
+      const seenToday = readStorage(SUMMARY_SEEN_KEY) === toDateInput(today);
+      writeStorage(SUMMARY_SEEN_KEY, toDateInput(today));
+
+      if (res && res.missed > 0) {
+        setProfile((p) => ({ ...p, total_xp: res.total_xp }));
+        setSummary({ day: yesterday, notice: { missed: res.missed, xpLost: res.xp_lost } });
+        refresh();
+        return;
+      }
+      if (seenToday) return;
+      const { count } = await supabase
+        .from("quests")
+        .select("id", { count: "exact", head: true })
+        .gte("start_at", yesterday.toISOString())
+        .lt("start_at", today.toISOString());
+      if (count) setSummary({ day: yesterday });
+    })();
+  }, [supabase, refresh]);
 
   // Keyboard shortcuts: T = today, N = new quest, arrows = previous/next.
   useEffect(() => {
@@ -163,6 +215,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       notes: q.notes ?? "",
       status: q.status,
       xp: q.xp,
+      penalty: q.xp_penalty,
     });
   }
 
@@ -219,15 +272,36 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       new_status: status,
     });
     if (error) return error.message;
-    const newTotal = data as number;
+    let newTotal = data as number;
+
+    // Completing a quest may push its day over the goal: claim the streak bonus.
+    let bonus: { bonus: number; streak: number } | undefined;
+    if (status === "completed" && quest) {
+      const day = startOfDay(new Date(quest.start_at));
+      const { data: claim } = await supabase.rpc("claim_daily_bonus", {
+        p_day: toDateInput(day),
+        p_start: day.toISOString(),
+        p_end: addDays(day, 1).toISOString(),
+      });
+      if (claim) {
+        bonus = claim as { bonus: number; streak: number; total_xp: number };
+        newTotal = (claim as { total_xp: number }).total_xp;
+      }
+    }
 
     const before = levelInfo(profile.total_xp).level;
     const after = levelInfo(newTotal).level;
+    const lost = profile.total_xp - newTotal;
     setProfile((p) => ({ ...p, total_xp: newTotal }));
     if (status === "completed") {
-      showToast({ xp: questXp, newLevel: after > before ? after : undefined });
+      showToast({
+        xp: questXp,
+        newLevel: after > before ? after : undefined,
+        bonus: bonus?.bonus,
+        streak: bonus?.streak,
+      });
     } else if (status === "failed" && quest) {
-      showToast({ failed: quest.title });
+      showToast({ failed: quest.title, lost });
     }
     setDraft(null);
     refresh();
@@ -235,7 +309,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   function showToast(t: Toast) {
     setToast(t);
-    setTimeout(() => setToast((cur) => (cur === t ? null : cur)), 3500);
+    setTimeout(() => setToast((cur) => (cur === t ? null : cur)), "bonus" in t && t.bonus ? 5000 : 3500);
   }
 
   function runStatus(id: string, status: QuestStatus) {
@@ -374,8 +448,18 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         <div className="rounded-lg bg-canvas p-3 shadow-sm">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">{profile.username}</span>
-            <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent">
-              Lv {lvl.level}
+            <span className="flex items-center gap-1">
+              <span
+                title={`${streak.current}-day streak (best: ${streak.best})`}
+                className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
+                  streak.current ? "bg-[#fcf3e2] text-[#c27c0e]" : "bg-surface text-faint"
+                }`}
+              >
+                <Flame size={12} /> {streak.current}
+              </span>
+              <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent">
+                Lv {lvl.level}
+              </span>
             </span>
           </div>
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface">
@@ -388,7 +472,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             {lvl.intoLevel} / {lvl.levelSize} XP to Lv {lvl.level + 1}
           </p>
           <div className="mt-3 flex justify-between text-[11px] text-muted">
-            <span>Today&apos;s goal</span>
+            <span>{streak.todayDone ? "Goal reached ✓" : "Today's goal"}</span>
             <span>
               <span className="font-semibold text-xp">{earnedToday}</span> / {profile.daily_xp_goal} XP
             </span>
@@ -399,6 +483,12 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               style={{ width: `${Math.min(100, (earnedToday / profile.daily_xp_goal) * 100)}%` }}
             />
           </div>
+          <button
+            onClick={() => setSummary({ day: new Date() })}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-line py-1 text-xs text-muted hover:bg-surface hover:text-ink"
+          >
+            <NotebookText size={12} /> Daily summary
+          </button>
         </div>
 
         <MiniCalendar selected={date} onSelect={(d) => setDate(startOfDay(d))} />
@@ -545,6 +635,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         />
       )}
 
+      {summary && (
+        <DailySummary
+          initialDay={summary.day}
+          goal={profile.daily_xp_goal}
+          missedNotice={summary.notice}
+          onClose={() => setSummary(null)}
+        />
+      )}
+
       {menu && (
         <ContextMenu
           key={`${menu.x},${menu.y}`}
@@ -559,14 +658,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       {toast && (
         <div className="pointer-events-none fixed right-6 top-6 z-[60] animate-[toast-in_300ms_ease-out] rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl">
           {"failed" in toast ? (
-            <p className="text-sm">
-              <span className="font-semibold text-danger">Quest failed</span>
-              <span className="text-muted"> · {toast.failed}</span>
-            </p>
+            <>
+              <p className="text-2xl font-bold text-danger">−{toast.lost} XP</p>
+              <p className="max-w-56 truncate text-xs text-muted">Quest failed · {toast.failed}</p>
+            </>
           ) : (
             <>
               <p className="text-2xl font-bold text-xp">+{toast.xp} XP</p>
               <p className="text-xs text-muted">Quest complete!</p>
+              {toast.bonus && (
+                <p className="mt-2 flex items-center gap-1 rounded-md bg-[#fcf3e2] px-2 py-1 text-sm font-semibold text-[#c27c0e]">
+                  <Flame size={14} /> Daily goal reached! +{toast.bonus} XP · {toast.streak}-day streak
+                </p>
+              )}
               {toast.newLevel && (
                 <p className="mt-1 text-sm font-semibold text-accent">
                   Level up! You&apos;re now Lv {toast.newLevel} 🎉
@@ -578,6 +682,22 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       )}
     </div>
   );
+}
+
+function readStorage(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable (private mode); the report may just show again.
+  }
 }
 
 function IconButton({

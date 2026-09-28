@@ -18,6 +18,8 @@ export type QuestDraft = {
   status: QuestStatus;
   /** XP already locked in for a finished quest. */
   xp?: number;
+  /** XP lost when this quest failed. */
+  penalty?: number;
 };
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
@@ -102,12 +104,15 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">
                 Rank {assessment.rank} quest ·{" "}
-                <span className="text-xp">
-                  +{finished && initial.xp !== undefined ? initial.xp : assessment.xp} XP
-                </span>
-                {finished && (
-                  <span className="ml-2 text-xs font-normal text-muted">
-                    ({initial.status === "completed" ? "earned" : "failed"})
+                {initial.status === "failed" ? (
+                  <span className="text-danger">
+                    −{initial.penalty ?? 0} XP
+                    <span className="ml-2 text-xs font-normal text-muted">(failed)</span>
+                  </span>
+                ) : (
+                  <span className="text-xp">
+                    +{finished && initial.xp !== undefined ? initial.xp : assessment.xp} XP
+                    {finished && <span className="ml-2 text-xs font-normal text-muted">(earned)</span>}
                   </span>
                 )}
               </p>
@@ -207,7 +212,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
                   <Check size={14} /> Mark complete
                 </ActionButton>
                 <ActionButton onClick={() => changeStatus("failed")} disabled={saving} tone="danger">
-                  <Flag size={13} /> Fail
+                  <Flag size={13} /> Fail (−{failPenalty(assessment.xp)} XP)
                 </ActionButton>
               </>
             )}
@@ -262,6 +267,11 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
       </form>
     </div>
   );
+}
+
+/** Mirrors the penalty rule in supabase/004_penalties_streaks.sql. */
+function failPenalty(xp: number) {
+  return Math.max(5, Math.round((xp * 0.5) / 5) * 5);
 }
 
 const TONES = {

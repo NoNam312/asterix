@@ -278,7 +278,10 @@ function QuestBlock({
         <span className="shrink-0 text-[11px] text-muted">
           {formatTime(start)}
           {!compact && ` – ${formatTime(end)}`}
-          {!compact && quest.xp > 0 && (
+          {!compact && failed && (
+            <span className="font-medium text-danger"> · −{quest.xp_penalty} XP</span>
+          )}
+          {!compact && !failed && quest.xp > 0 && (
             <span className={done ? "font-medium text-xp" : ""}> · {done ? "+" : ""}{quest.xp} XP</span>
           )}
         </span>

@@ -12,6 +12,7 @@ export type Quest = {
   status: QuestStatus;
   difficulty: string | null;
   xp: number;
+  xp_penalty: number;
   started_at: string | null;
   created_at: string;
 };
