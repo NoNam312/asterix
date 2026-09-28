@@ -1,5 +1,5 @@
 // Writes extension/config.js from .env.local so the extension talks to the same Supabase project.
-// Usage: npm run extension:config [-- --app-url https://your-deployed-app.com]
+// Usage: npm run extension:config [-- --app-url http://localhost:3000]
 import { readFileSync, writeFileSync } from "node:fs";
 
 const env = Object.fromEntries(
@@ -18,7 +18,7 @@ if (!url || !key) {
 }
 
 const appUrlFlag = process.argv.indexOf("--app-url");
-const appUrl = appUrlFlag === -1 ? "http://localhost:3000" : process.argv[appUrlFlag + 1];
+const appUrl = appUrlFlag === -1 ? "https://questlog-lake.vercel.app" : process.argv[appUrlFlag + 1];
 
 writeFileSync(
   new URL("../extension/config.js", import.meta.url),
