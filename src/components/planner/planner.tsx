@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ChevronLeft, ChevronRight, LogOut, Plus, Swords } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, LogOut, Plus, Swords } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   addDays,
@@ -14,8 +14,11 @@ import {
   toDateInput,
   toTimeInput,
 } from "@/lib/dates";
-import { CATEGORIES, type Profile, type Quest } from "@/lib/quests";
+import { assessQuest } from "@/lib/difficulty";
+import { levelInfo } from "@/lib/levels";
+import { CATEGORIES, type Profile, type Quest, type QuestStatus } from "@/lib/quests";
 import { signOut } from "@/app/login/actions";
+import { ActiveQuestBar } from "./active-quest-bar";
 import { CalendarGrid } from "./calendar-grid";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
@@ -33,8 +36,13 @@ export function Planner({ profile }: { profile: Profile }) {
   return inBrowser ? <PlannerView profile={profile} /> : <div className="h-screen bg-canvas" />;
 }
 
-function PlannerView({ profile }: { profile: Profile }) {
+type Toast = { xp: number; newLevel?: number } | { failed: string };
+
+function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const supabase = useMemo(() => createClient(), []);
+  const [profile, setProfile] = useState(initialProfile);
+  const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
   const [view, setView] = useState<View>("week");
   const [date, setDate] = useState(() => startOfDay(new Date()));
   const [quests, setQuests] = useState<Quest[]>([]);
@@ -68,14 +76,16 @@ function PlannerView({ profile }: { profile: Profile }) {
 
   const refresh = useCallback(async () => {
     const today = startOfDay(new Date());
-    const [range, todays] = await Promise.all([
+    const [range, todays, active] = await Promise.all([
       fetchRange(rangeStart, rangeEnd),
       fetchRange(today, addDays(today, 1)),
+      supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
     ]);
     setQuests(range);
     setTodayQuests(todays);
+    setActiveQuest((active.data as Quest | null) ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the range timestamps below
-  }, [fetchRange, rangeStart.getTime(), rangeEnd.getTime()]);
+  }, [supabase, fetchRange, rangeStart.getTime(), rangeEnd.getTime()]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data for the visible range
@@ -107,6 +117,7 @@ function PlannerView({ profile }: { profile: Profile }) {
       time: toTimeInput(start),
       duration: 60,
       notes: "",
+      status: "planned",
     });
   }
 
@@ -120,16 +131,27 @@ function PlannerView({ profile }: { profile: Profile }) {
       time: toTimeInput(start),
       duration: q.duration_min,
       notes: q.notes ?? "",
+      status: q.status,
+      xp: q.xp,
     });
   }
 
   async function save(d: QuestDraft) {
+    const finished = d.status === "completed" || d.status === "failed";
+    const { rank, xp } = assessQuest({
+      title: d.title,
+      notes: d.notes,
+      category: d.category,
+      durationMin: d.duration,
+    });
     const row = {
       title: d.title,
       category: d.category,
       notes: d.notes.trim() || null,
       start_at: fromInputs(d.date, d.time).toISOString(),
       duration_min: d.duration,
+      // A finished quest keeps the XP it was completed with.
+      ...(finished ? {} : { difficulty: rank, xp }),
     };
     const { error } = d.id
       ? await supabase.from("quests").update(row).eq("id", d.id)
@@ -146,6 +168,50 @@ function PlannerView({ profile }: { profile: Profile }) {
     refresh();
   }
 
+  async function setStatus(id: string, status: QuestStatus) {
+    const quest = [...quests, ...todayQuests, activeQuest].find((q) => q?.id === id);
+    let questXp = quest?.xp ?? 0;
+    // Quests made before the quest engine existed have no rank yet; score them first.
+    if (quest && !quest.difficulty) {
+      const { rank, xp } = assessQuest({
+        title: quest.title,
+        notes: quest.notes,
+        category: quest.category,
+        durationMin: quest.duration_min,
+      });
+      const { error } = await supabase.from("quests").update({ difficulty: rank, xp }).eq("id", id);
+      if (error) return error.message;
+      questXp = xp;
+    }
+
+    const { data, error } = await supabase.rpc("set_quest_status", {
+      quest_id: id,
+      new_status: status,
+    });
+    if (error) return error.message;
+    const newTotal = data as number;
+
+    const before = levelInfo(profile.total_xp).level;
+    const after = levelInfo(newTotal).level;
+    setProfile((p) => ({ ...p, total_xp: newTotal }));
+    if (status === "completed") {
+      showToast({ xp: questXp, newLevel: after > before ? after : undefined });
+    } else if (status === "failed" && quest) {
+      showToast({ failed: quest.title });
+    }
+    setDraft(null);
+    refresh();
+  }
+
+  function showToast(t: Toast) {
+    setToast(t);
+    setTimeout(() => setToast((cur) => (cur === t ? null : cur)), 3500);
+  }
+
+  function runStatus(id: string, status: QuestStatus) {
+    setStatus(id, status).then((err) => err && setError(err));
+  }
+
   async function reschedule(q: Quest, start: Date, duration: number) {
     const patch = { start_at: start.toISOString(), duration_min: duration };
     // Optimistic update so the block doesn't snap back while saving.
@@ -158,7 +224,7 @@ function PlannerView({ profile }: { profile: Profile }) {
   const earnedToday = todayQuests
     .filter((q) => q.status === "completed")
     .reduce((sum, q) => sum + q.xp, 0);
-  const level = Math.floor(profile.total_xp / 500) + 1;
+  const lvl = levelInfo(profile.total_xp);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -175,11 +241,20 @@ function PlannerView({ profile }: { profile: Profile }) {
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">{profile.username}</span>
             <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent">
-              Lv {level}
+              Lv {lvl.level}
             </span>
           </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{ width: `${lvl.progress * 100}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-faint">
+            {lvl.intoLevel} / {lvl.levelSize} XP to Lv {lvl.level + 1}
+          </p>
           <div className="mt-3 flex justify-between text-[11px] text-muted">
-            <span>Today</span>
+            <span>Today&apos;s goal</span>
             <span>
               <span className="font-semibold text-xp">{earnedToday}</span> / {profile.daily_xp_goal} XP
             </span>
@@ -202,23 +277,35 @@ function PlannerView({ profile }: { profile: Profile }) {
             <p className="px-1 pt-2 text-xs text-faint">Nothing planned yet.</p>
           ) : (
             <ul className="mt-1 space-y-0.5">
-              {todayQuests.map((q) => (
-                <li key={q.id}>
-                  <button
-                    onClick={() => openEdit(q)}
-                    className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs hover:bg-surface-hover"
-                  >
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ background: CATEGORIES[q.category].color }}
-                    />
-                    <span className={`flex-1 truncate ${q.status === "completed" ? "text-muted line-through" : ""}`}>
-                      {q.title}
-                    </span>
-                    <span className="text-faint">{formatTime(new Date(q.start_at))}</span>
-                  </button>
-                </li>
-              ))}
+              {todayQuests.map((q) => {
+                const done = q.status === "completed";
+                const failed = q.status === "failed";
+                const color = CATEGORIES[q.category].color;
+                return (
+                  <li key={q.id} className="flex items-center gap-1.5 rounded-md px-1 hover:bg-surface-hover">
+                    <button
+                      title={done ? "Undo" : "Mark complete"}
+                      disabled={failed}
+                      onClick={() => runStatus(q.id, done ? "planned" : "completed")}
+                      className="grid size-4 shrink-0 place-items-center rounded border transition disabled:opacity-40"
+                      style={{ borderColor: color, background: done ? color : "transparent" }}
+                    >
+                      {done && <Check size={11} className="text-white" strokeWidth={3} />}
+                    </button>
+                    <button
+                      onClick={() => openEdit(q)}
+                      className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-xs"
+                    >
+                      <span
+                        className={`flex-1 truncate ${done ? "text-muted line-through" : ""} ${failed ? "text-danger line-through" : ""}`}
+                      >
+                        {q.title}
+                      </span>
+                      <span className="text-faint">{formatTime(new Date(q.start_at))}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -277,6 +364,15 @@ function PlannerView({ profile }: { profile: Profile }) {
           </button>
         </header>
 
+        {activeQuest && (
+          <ActiveQuestBar
+            quest={activeQuest}
+            onComplete={() => runStatus(activeQuest.id, "completed")}
+            onFail={() => runStatus(activeQuest.id, "failed")}
+            onStop={() => runStatus(activeQuest.id, "planned")}
+          />
+        )}
+
         {error && (
           <div className="flex items-center justify-between bg-danger-soft px-4 py-2 text-sm text-danger">
             {error}
@@ -302,7 +398,29 @@ function PlannerView({ profile }: { profile: Profile }) {
           onClose={() => setDraft(null)}
           onSave={save}
           onDelete={remove}
+          onStatus={setStatus}
         />
+      )}
+
+      {toast && (
+        <div className="pointer-events-none fixed right-6 top-6 z-[60] animate-[toast-in_300ms_ease-out] rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl">
+          {"failed" in toast ? (
+            <p className="text-sm">
+              <span className="font-semibold text-danger">Quest failed</span>
+              <span className="text-muted"> · {toast.failed}</span>
+            </p>
+          ) : (
+            <>
+              <p className="text-2xl font-bold text-xp">+{toast.xp} XP</p>
+              <p className="text-xs text-muted">Quest complete!</p>
+              {toast.newLevel && (
+                <p className="mt-1 text-sm font-semibold text-accent">
+                  Level up! You&apos;re now Lv {toast.newLevel} 🎉
+                </p>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

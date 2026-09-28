@@ -8,7 +8,10 @@ import {
   minutesIntoDay,
   startOfDay,
 } from "@/lib/dates";
+import { Check, X } from "lucide-react";
+import type { Rank } from "@/lib/difficulty";
 import { CATEGORIES, type Quest } from "@/lib/quests";
+import { RankBadge } from "./rank-badge";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
@@ -218,29 +221,39 @@ function QuestBlock({
   const compact = height < 40;
   const done = quest.status === "completed";
   const failed = quest.status === "failed";
+  const active = quest.status === "active";
 
   return (
     <div
       onPointerDown={(e) => onPointerDown(e, "move")}
       className={`group absolute z-10 cursor-grab touch-none overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-xs transition-shadow ${
         dragging ? "z-30 shadow-lg ring-1 ring-black/5" : "hover:shadow-md"
-      } ${done || failed ? "opacity-60" : ""}`}
+      } ${done || failed ? "opacity-60" : ""} ${active ? "ring-2 ring-offset-1" : ""}`}
       style={{
         top: (minutesIntoDay(start) / 60) * HOUR_HEIGHT + 1,
         height,
         left: `calc(${(col.index / col.count) * 100}% + 2px)`,
         width: `calc(${100 / col.count}% - 4px)`,
-        background: cat.soft,
-        borderColor: cat.color,
+        background: failed ? "var(--color-danger-soft)" : cat.soft,
+        borderColor: failed ? "var(--color-danger)" : cat.color,
+        ["--tw-ring-color" as string]: cat.color,
       }}
     >
       <div className={`flex items-baseline gap-1.5 ${compact ? "" : "flex-col gap-0"}`}>
-        <span className={`truncate font-medium text-ink ${done ? "line-through" : ""}`}>
-          {quest.title}
+        <span className="flex min-w-0 items-center gap-1">
+          {done && <Check size={12} className="shrink-0 text-xp" />}
+          {failed && <X size={12} className="shrink-0 text-danger" />}
+          {quest.difficulty && !done && !failed && <RankBadge rank={quest.difficulty as Rank} />}
+          <span className={`truncate font-medium text-ink ${done || failed ? "line-through" : ""}`}>
+            {quest.title}
+          </span>
         </span>
         <span className="shrink-0 text-[11px] text-muted">
           {formatTime(start)}
           {!compact && ` – ${formatTime(end)}`}
+          {!compact && quest.xp > 0 && (
+            <span className={done ? "font-medium text-xp" : ""}> · {done ? "+" : ""}{quest.xp} XP</span>
+          )}
         </span>
       </div>
       <div

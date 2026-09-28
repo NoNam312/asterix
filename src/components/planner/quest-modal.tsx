@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2, X } from "lucide-react";
+import { Check, Flag, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { formatDuration } from "@/lib/dates";
-import { CATEGORIES, CATEGORY_KEYS, type Category } from "@/lib/quests";
+import { assessQuest } from "@/lib/difficulty";
+import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
+import { RankBadge } from "./rank-badge";
 
 export type QuestDraft = {
   id?: string;
@@ -13,6 +15,9 @@ export type QuestDraft = {
   time: string; // HH:MM
   duration: number; // minutes
   notes: string;
+  status: QuestStatus;
+  /** XP already locked in for a finished quest. */
+  xp?: number;
 };
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
@@ -23,9 +28,10 @@ type Props = {
   /** Resolves to an error message if saving failed. */
   onSave: (draft: QuestDraft) => Promise<string | undefined>;
   onDelete: (id: string) => Promise<string | undefined>;
+  onStatus: (id: string, status: QuestStatus) => Promise<string | undefined>;
 };
 
-export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props) {
+export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus }: Props) {
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -46,6 +52,20 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props)
     setError(await onSave({ ...draft, title: draft.title.trim() }));
     setSaving(false);
   }
+
+  async function changeStatus(status: QuestStatus) {
+    setSaving(true);
+    setError(await onStatus(initial.id!, status));
+    setSaving(false);
+  }
+
+  const finished = initial.status === "completed" || initial.status === "failed";
+  const assessment = assessQuest({
+    title: draft.title,
+    notes: draft.notes,
+    category: draft.category,
+    durationMin: draft.duration,
+  });
 
   const durationOptions = DURATIONS.includes(draft.duration)
     ? DURATIONS
@@ -75,6 +95,39 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props)
           maxLength={200}
           className="mt-3 w-full border-none text-xl font-semibold outline-none placeholder:text-faint"
         />
+
+        {draft.title.trim() && (
+          <div className="mt-3 flex items-start gap-3 rounded-lg bg-surface p-3">
+            <RankBadge rank={assessment.rank} size="lg" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">
+                Rank {assessment.rank} quest ·{" "}
+                <span className="text-xp">
+                  +{finished && initial.xp !== undefined ? initial.xp : assessment.xp} XP
+                </span>
+                {finished && (
+                  <span className="ml-2 text-xs font-normal text-muted">
+                    ({initial.status === "completed" ? "earned" : "failed"})
+                  </span>
+                )}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {assessment.reasons.map((r) => (
+                  <span
+                    key={r.label}
+                    className="rounded bg-canvas px-1.5 py-0.5 text-[11px] text-muted"
+                  >
+                    {r.label}{" "}
+                    <span className={r.points < 0 ? "text-danger" : "text-ink"}>
+                      {r.points > 0 ? "+" : ""}
+                      {r.points}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-1.5">
           {CATEGORY_KEYS.map((key) => {
@@ -143,6 +196,39 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props)
           />
         </Labeled>
 
+        {!isNew && (
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-line pt-4">
+            {initial.status === "planned" && (
+              <>
+                <ActionButton onClick={() => changeStatus("active")} disabled={saving} tone="accent">
+                  <Play size={13} /> Start quest
+                </ActionButton>
+                <ActionButton onClick={() => changeStatus("completed")} disabled={saving} tone="xp">
+                  <Check size={14} /> Mark complete
+                </ActionButton>
+                <ActionButton onClick={() => changeStatus("failed")} disabled={saving} tone="danger">
+                  <Flag size={13} /> Fail
+                </ActionButton>
+              </>
+            )}
+            {initial.status === "active" && (
+              <>
+                <ActionButton onClick={() => changeStatus("completed")} disabled={saving} tone="xp">
+                  <Check size={14} /> Complete
+                </ActionButton>
+                <ActionButton onClick={() => changeStatus("failed")} disabled={saving} tone="danger">
+                  <Flag size={13} /> Fail
+                </ActionButton>
+              </>
+            )}
+            {finished && (
+              <ActionButton onClick={() => changeStatus("planned")} disabled={saving} tone="muted">
+                <RotateCcw size={13} /> Undo ({initial.status === "completed" ? "removes the XP" : "back to planned"})
+              </ActionButton>
+            )}
+          </div>
+        )}
+
         {error && (
           <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
         )}
@@ -175,6 +261,26 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props)
         </div>
       </form>
     </div>
+  );
+}
+
+const TONES = {
+  accent: "bg-accent text-white hover:bg-accent-hover",
+  xp: "bg-xp text-white hover:brightness-95",
+  danger: "border border-line text-danger hover:bg-danger-soft",
+  muted: "border border-line text-muted hover:text-ink",
+};
+
+function ActionButton({
+  tone,
+  ...props
+}: { tone: keyof typeof TONES } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium transition disabled:opacity-50 ${TONES[tone]}`}
+    />
   );
 }
 
