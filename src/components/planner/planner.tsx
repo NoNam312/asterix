@@ -134,14 +134,14 @@ function PlannerView({ profile }: { profile: Profile }) {
     const { error } = d.id
       ? await supabase.from("quests").update(row).eq("id", d.id)
       : await supabase.from("quests").insert(row);
-    if (error) return setError(error.message);
+    if (error) return error.message;
     setDraft(null);
     refresh();
   }
 
   async function remove(id: string) {
     const { error } = await supabase.from("quests").delete().eq("id", id);
-    if (error) return setError(error.message);
+    if (error) return error.message;
     setDraft(null);
     refresh();
   }

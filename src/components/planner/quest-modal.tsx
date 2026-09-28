@@ -20,13 +20,15 @@ const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 type Props = {
   draft: QuestDraft;
   onClose: () => void;
-  onSave: (draft: QuestDraft) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  /** Resolves to an error message if saving failed. */
+  onSave: (draft: QuestDraft) => Promise<string | undefined>;
+  onDelete: (id: string) => Promise<string | undefined>;
 };
 
 export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props) {
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
   const isNew = !initial.id;
   const set = <K extends keyof QuestDraft>(key: K, value: QuestDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -41,7 +43,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props)
     e.preventDefault();
     if (!draft.title.trim()) return;
     setSaving(true);
-    await onSave({ ...draft, title: draft.title.trim() });
+    setError(await onSave({ ...draft, title: draft.title.trim() }));
     setSaving(false);
   }
 
@@ -141,11 +143,15 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete }: Props)
           />
         </Labeled>
 
+        {error && (
+          <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+        )}
+
         <div className="mt-5 flex items-center gap-2">
           {!isNew && (
             <button
               type="button"
-              onClick={() => onDelete(initial.id!)}
+              onClick={async () => setError(await onDelete(initial.id!))}
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-danger hover:bg-danger-soft"
             >
               <Trash2 size={14} /> Delete
