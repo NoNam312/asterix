@@ -2,12 +2,15 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Handles the link in the sign-up confirmation email.
+// Handles links in Supabase emails (sign-up confirmation, password reset).
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
+  const next = searchParams.get("next") ?? "/";
+  // Only allow redirects within this app.
+  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
 
   const supabase = await createClient();
   const { error } = code
@@ -16,5 +19,5 @@ export async function GET(request: NextRequest) {
       ? await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
       : { error: new Error("Missing confirmation token") };
 
-  return NextResponse.redirect(new URL(error ? "/login?error=confirm" : "/", origin));
+  return NextResponse.redirect(new URL(error ? "/login?error=confirm" : safeNext, origin));
 }

@@ -18,6 +18,20 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   redirect("/");
 }
 
+export async function requestPasswordReset(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Enter the email you signed up with." };
+
+  const origin = (await headers()).get("origin");
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+  });
+  if (error) return { error: error.message };
+  // Same message whether or not the account exists, so emails can't be probed.
+  return { message: "If that email has an account, a reset link is on its way. Check your inbox." };
+}
+
 export async function signUp(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const username = String(formData.get("username") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();

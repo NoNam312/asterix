@@ -20,6 +20,7 @@ export default async function SettingsPage() {
         blocked_sites: profile?.blocked_sites ?? [],
         allowed_urls: profile?.allowed_urls ?? [],
       }}
+      email={auth.user.email ?? ""}
       needsMigration={!profile || !("blocked_sites" in profile)}
     />
   );

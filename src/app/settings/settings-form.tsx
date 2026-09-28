@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ArrowLeft, KeyRound, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ChangePasswordForm } from "@/components/change-password-form";
 import { createClient } from "@/lib/supabase/client";
 
 type Settings = {
@@ -13,9 +14,11 @@ type Settings = {
 
 export function SettingsForm({
   initial,
+  email,
   needsMigration,
 }: {
   initial: Settings;
+  email: string;
   needsMigration: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -42,6 +45,9 @@ export function SettingsForm({
         <ArrowLeft size={14} /> Back to planner
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">Settings</h1>
+      <p className="mt-1 text-sm text-muted">
+        Signed in as <span className="font-medium text-ink">{email}</span>
+      </p>
 
       {needsMigration && (
         <p className="mt-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -123,6 +129,11 @@ export function SettingsForm({
         <p className="mt-2 text-xs text-faint">
           Changes you save here reach the extension within a minute (or click Refresh in its popup).
         </p>
+      </Section>
+
+      <Section icon={<KeyRound size={16} />} title="Change password">
+        <p className="mb-3 text-sm text-muted">Used to log in to the app and the Chrome extension.</p>
+        <ChangePasswordForm />
       </Section>
     </main>
   );
