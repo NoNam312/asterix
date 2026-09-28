@@ -45,3 +45,4 @@ next-env.d.ts
 /extension/config.js
 
 .vercel
+/public/questlog-extension.zip

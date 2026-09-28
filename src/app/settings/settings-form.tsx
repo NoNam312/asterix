@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, KeyRound, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ArrowLeft, Download, KeyRound, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { createClient } from "@/lib/supabase/client";
 
@@ -112,26 +112,40 @@ export function SettingsForm({
         {status.error && <span className="text-sm text-danger">{status.error}</span>}
       </div>
 
-      <Section id="extension" icon={<Puzzle size={16} />} title="Chrome extension setup">
-        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted">
+      <Section id="extension" icon={<Puzzle size={16} />} title="Chrome extension (focus lock)">
+        <p className="text-sm text-muted">
+          Install it in every computer and Chrome profile you use. Extensions are installed per
+          profile, and websites can&apos;t install them for you.
+        </p>
+        <a
+          href="/questlog-extension.zip"
+          download
+          className="mt-3 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+        >
+          <Download size={15} /> Download extension (.zip)
+        </a>
+        <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-sm text-muted">
+          <li>
+            Unzip it: right-click the downloaded file and choose{" "}
+            <strong className="text-ink">Extract All</strong>. Keep the{" "}
+            <code className="rounded bg-surface px-1 text-ink">questlog-extension</code> folder
+            somewhere permanent (e.g. Documents), not in Downloads, because Chrome needs it to stay.
+          </li>
           <li>
             Open <code className="rounded bg-surface px-1 text-ink">chrome://extensions</code> and turn
             on <strong className="text-ink">Developer mode</strong> (top right).
           </li>
           <li>
             Click <strong className="text-ink">Load unpacked</strong> and choose the{" "}
-            <code className="rounded bg-surface px-1 text-ink">extension</code> folder inside this
-            project.
+            <code className="rounded bg-surface px-1 text-ink">questlog-extension</code> folder.
           </li>
           <li>Pin the QuestLog icon, click it, and sign in with this account.</li>
-          <li>
-            Repeat in every Chrome profile you use. Extensions are installed per profile, and
-            websites can&apos;t install them for you.
-          </li>
           <li>The badge shows how much XP you still need today. ✓ means you&apos;re unlocked.</li>
         </ol>
         <p className="mt-2 text-xs text-faint">
-          Changes you save here reach the extension within a minute (or click Refresh in its popup).
+          Settings you save here reach the extension within a minute (or click Refresh in its popup).
+          To update the extension later, download it again, replace the folder, and click ↻ on its card
+          in <code>chrome://extensions</code>.
         </p>
       </Section>
 

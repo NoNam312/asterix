@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "extension:config": "node scripts/extension-config.mjs"
+    "extension:config": "node scripts/extension-config.mjs",
+    "prebuild": "node scripts/package-extension.mjs",
+    "extension:package": "node scripts/package-extension.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -24,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "fflate": "^0.8.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

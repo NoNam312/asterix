@@ -3,27 +3,55 @@
   "name": "QuestLog Focus Lock",
   "version": "0.2.0",
   "description": "Blocks distracting sites until you reach your daily XP goal in QuestLog.",
-  "permissions": ["storage", "alarms", "tabs", "declarativeNetRequest"],
-  "host_permissions": ["<all_urls>"],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://questlog-lake.vercel.app/*", "http://localhost:3000/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://questlog-lake.vercel.app/*",
+        "http://localhost:3000/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "action": {
     "default_title": "QuestLog Focus Lock",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "web_accessible_resources": [
     {
-      "resources": ["blocked.html"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "blocked.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }
