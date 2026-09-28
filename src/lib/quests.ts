@@ -21,6 +21,9 @@ export type Profile = {
   username: string;
   total_xp: number;
   daily_xp_goal: number;
+  blocked_sites?: string[];
+  /** End of an emergency unlock bought in the extension. */
+  unlocked_until?: string | null;
 };
 
 /** Cool-toned palette so categories stay distinguishable on a gray/white UI. */

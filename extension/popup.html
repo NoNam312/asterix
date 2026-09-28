@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QuestLog Focus Lock</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      body {
+        width: 300px;
+        padding: 16px;
+      }
+      .big {
+        font-size: 26px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <div class="logo"><span class="logo-mark">⚔</span> QuestLog</div>
+      <span id="pill" class="pill hidden"></span>
+    </div>
+
+    <!-- Signed out -->
+    <form id="login" class="stack hidden" style="margin-top: 16px">
+      <p class="muted small">Sign in with your QuestLog account to turn on the focus lock.</p>
+      <label>Email <input name="email" type="email" required autocomplete="email" /></label>
+      <label>
+        Password <input name="password" type="password" required autocomplete="current-password" />
+      </label>
+      <p id="login-error" class="error hidden"></p>
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+
+    <!-- Signed in -->
+    <section id="status" class="stack hidden" style="margin-top: 16px">
+      <div>
+        <p class="muted small">Today's XP</p>
+        <p class="big"><span id="earned">0</span><span class="muted small"> / <span id="goal">0</span> XP</span></p>
+        <div class="bar" style="margin-top: 6px"><div id="bar" style="width: 0"></div></div>
+        <p id="message" class="muted small" style="margin-top: 6px"></p>
+      </div>
+      <p id="status-error" class="error hidden"></p>
+      <a id="open-app" class="btn primary" target="_blank">Open QuestLog</a>
+      <button id="emergency" class="btn danger hidden"></button>
+      <div class="row">
+        <span id="account" class="muted small"></span>
+        <span>
+          <button id="refresh" class="btn link small" title="Check again">Refresh</button>
+          <button id="logout" class="btn link small">Sign out</button>
+        </span>
+      </div>
+    </section>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

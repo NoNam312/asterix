@@ -13,6 +13,11 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    // The Chrome extension is plain browser JS, not part of the Next.js app.
+    files: ["extension/**"],
+    rules: { "@next/next/no-location-assign-relative-destination": "off" },
+  },
 ]);
 
 export default eslintConfig;

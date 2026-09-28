@@ -10,7 +10,10 @@ import {
   CopyPlus,
   Flag,
   Flame,
+  Lock,
+  LockOpen,
   NotebookText,
+  Settings,
   LogOut,
   Pencil,
   Play,
@@ -42,6 +45,7 @@ import {
   type Quest,
   type QuestStatus,
 } from "@/lib/quests";
+import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { ActiveQuestBar } from "./active-quest-bar";
 import { CalendarGrid } from "./calendar-grid";
@@ -433,6 +437,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     .filter((q) => q.status === "completed")
     .reduce((sum, q) => sum + q.xp, 0);
   const lvl = levelInfo(profile.total_xp);
+  const emergencyUntil = profile.unlocked_until ? new Date(profile.unlocked_until) : null;
+  const sitesUnlocked =
+    earnedToday >= profile.daily_xp_goal || (emergencyUntil !== null && emergencyUntil > new Date());
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -491,6 +498,26 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           </button>
         </div>
 
+        <Link
+          href="/settings"
+          title="Focus lock settings"
+          className={`-mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition hover:brightness-95 ${
+            sitesUnlocked ? "bg-xp-soft text-xp" : "bg-accent-soft text-accent"
+          }`}
+        >
+          {sitesUnlocked ? <LockOpen size={14} /> : <Lock size={14} />}
+          <span className="flex-1">
+            <span className="font-semibold">{sitesUnlocked ? "Sites unlocked" : "Sites locked"}</span>
+            <span className="block opacity-80">
+              {sitesUnlocked
+                ? earnedToday >= profile.daily_xp_goal
+                  ? "Goal reached. Enjoy your break!"
+                  : `Emergency unlock until ${formatTime(emergencyUntil!)}`
+                : `${profile.daily_xp_goal - earnedToday} XP to unlock ${profile.blocked_sites?.length ?? 0} sites`}
+            </span>
+          </span>
+        </Link>
+
         <MiniCalendar selected={date} onSelect={(d) => setDate(startOfDay(d))} />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -541,11 +568,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           )}
         </div>
 
-        <form action={signOut}>
-          <button className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink">
-            <LogOut size={14} /> Log out
-          </button>
-        </form>
+        <div>
+          <Link
+            href="/settings"
+            className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink"
+          >
+            <Settings size={14} /> Settings
+          </Link>
+          <form action={signOut}>
+            <button className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink">
+              <LogOut size={14} /> Log out
+            </button>
+          </form>
+        </div>
       </aside>
 
       {/* Main calendar */}

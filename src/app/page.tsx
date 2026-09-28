@@ -12,7 +12,7 @@ export default async function Home() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username, total_xp, daily_xp_goal")
+    .select("*")
     .eq("id", auth.user.id)
     .single();
 
