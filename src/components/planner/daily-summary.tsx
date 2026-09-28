@@ -64,10 +64,10 @@ export function DailySummary({ initialDay, goal, missedNotice, onClose }: Props)
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/20 p-4 backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/20 backdrop-blur-[1px] sm:items-center sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-xl border border-line bg-canvas shadow-xl">
+      <div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-canvas pb-[env(safe-area-inset-bottom)] shadow-xl sm:rounded-xl sm:pb-0">
         <div className="flex items-center gap-1 border-b border-line px-5 py-3">
           <div className="flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted">

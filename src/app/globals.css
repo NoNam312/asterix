@@ -39,3 +39,19 @@ body {
     transform: none;
   }
 }
+
+/* iOS zooms into inputs smaller than 16px; keep them at 16px on phones. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Long-press to drag: no text selection or iOS callout menu on quest blocks. */
+.no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

@@ -75,12 +75,12 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/20 p-4 backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/20 backdrop-blur-[1px] sm:items-center sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-xl border border-line bg-canvas p-5 shadow-xl"
+        className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-line bg-canvas p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-xl sm:pb-5"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-muted">{isNew ? "New quest" : "Edit quest"}</h2>
@@ -156,8 +156,8 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           })}
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <Labeled label="Date">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Labeled label="Date" className="col-span-2 sm:col-span-1">
             <input
               type="date"
               required

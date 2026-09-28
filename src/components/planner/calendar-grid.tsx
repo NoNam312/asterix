@@ -10,12 +10,15 @@ import {
 } from "@/lib/dates";
 import { Check, X } from "lucide-react";
 import type { Rank } from "@/lib/difficulty";
+import { haptic } from "@/lib/haptics";
 import { CATEGORIES, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
-const DRAG_THRESHOLD = 4; // px before a press counts as a drag instead of a click
+const DRAG_THRESHOLD = 6; // px before a mouse press counts as a drag instead of a click
+const LONG_PRESS_MS = 450; // touch: hold this long to pick a quest up
+const TOUCH_SLOP = 10; // touch: moving further than this before the hold completes means scrolling
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 type Props = {
@@ -36,6 +39,7 @@ type Drag = {
   dx: number;
   dy: number;
   colWidth: number; // measured when the drag starts
+  touch: boolean; // started by a long-press on a touch screen
 };
 
 export function CalendarGrid({
@@ -51,6 +55,8 @@ export function CalendarGrid({
   const columnsRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  const cancelPressRef = useRef<(() => void) | null>(null);
+  const lastPointerRef = useRef<string>("mouse");
   const now = useNow();
 
   // Start scrolled to ~7am so the working day is visible.
@@ -86,7 +92,9 @@ export function CalendarGrid({
       setDrag(null);
       if (!d) return;
       if (Math.abs(d.dx) < DRAG_THRESHOLD && Math.abs(d.dy) < DRAG_THRESHOLD) {
-        onEdit(d.quest);
+        // Mouse click opens the quest; a touch hold released in place opens the quick menu.
+        if (d.touch) onQuestMenu(d.quest, d.x0, d.y0);
+        else onEdit(d.quest);
         return;
       }
       const { start, duration } = preview(d);
@@ -94,23 +102,71 @@ export function CalendarGrid({
         onReschedule(d.quest, start, duration);
       }
     };
+    const cancel = () => {
+      dragRef.current = null;
+      setDrag(null);
+    };
+    // While a touch drag is active, stop the page from scrolling under the finger.
+    const blockScroll = (e: TouchEvent) => e.preventDefault();
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    if (drag.touch) document.addEventListener("touchmove", blockScroll, { passive: false });
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      document.removeEventListener("touchmove", blockScroll);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners read the latest drag via dragRef
   }, [drag?.quest.id]);
 
-  function startDrag(e: React.PointerEvent, quest: Quest, mode: Drag["mode"]) {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const colWidth = (columnsRef.current?.clientWidth ?? 1) / days.length;
-    const d = { quest, mode, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, colWidth };
+  useEffect(() => () => cancelPressRef.current?.(), []);
+
+  function beginDrag(d: Drag) {
     dragRef.current = d;
     setDrag(d);
+  }
+
+  function startDrag(e: React.PointerEvent, quest: Quest, mode: Drag["mode"]) {
+    lastPointerRef.current = e.pointerType;
+    const colWidth = (columnsRef.current?.clientWidth ?? 1) / days.length;
+    const base = { quest, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, colWidth };
+
+    if (e.pointerType === "mouse") {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      beginDrag({ ...base, mode, touch: false });
+      return;
+    }
+
+    // Touch: tap opens the quest, swipe scrolls, press-and-hold picks it up.
+    e.stopPropagation();
+    cancelPressRef.current?.();
+    const timer = window.setTimeout(() => {
+      cleanup();
+      haptic();
+      beginDrag({ ...base, mode: "move", touch: true });
+    }, LONG_PRESS_MS);
+    const onMove = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - base.x0, ev.clientY - base.y0) > TOUCH_SLOP) cleanup();
+    };
+    const onUp = () => {
+      cleanup();
+      onEdit(quest);
+    };
+    function cleanup() {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", cleanup);
+      cancelPressRef.current = null;
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", cleanup);
+    cancelPressRef.current = cleanup;
   }
 
   function slotAt(e: React.MouseEvent<HTMLDivElement>, day: Date) {
@@ -210,9 +266,12 @@ export function CalendarGrid({
                       quest={q}
                       col={layout.get(q.id)!}
                       dragging={drag?.quest.id === q.id}
+                      lifted={drag?.quest.id === q.id && drag.touch}
                       onPointerDown={(e, mode) => startDrag(e, q, mode)}
                       onContextMenu={(e) => {
                         e.preventDefault();
+                        // Touch screens use press-and-hold instead (handled above).
+                        if (lastPointerRef.current !== "mouse") return;
                         onQuestMenu(q, e.clientX, e.clientY);
                       }}
                     />
@@ -231,12 +290,14 @@ function QuestBlock({
   quest,
   col,
   dragging,
+  lifted,
   onPointerDown,
   onContextMenu,
 }: {
   quest: Quest;
   col: { index: number; count: number };
   dragging: boolean;
+  lifted: boolean;
   onPointerDown: (e: React.PointerEvent, mode: Drag["mode"]) => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
@@ -253,9 +314,9 @@ function QuestBlock({
     <div
       onPointerDown={(e) => onPointerDown(e, "move")}
       onContextMenu={onContextMenu}
-      className={`group absolute z-10 cursor-grab touch-none overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-xs transition-shadow ${
+      className={`no-callout group absolute z-10 cursor-grab overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-xs transition-[box-shadow,transform] ${
         dragging ? "z-30 shadow-lg ring-1 ring-black/5" : "hover:shadow-md"
-      } ${done || failed ? "opacity-60" : ""} ${active ? "ring-2 ring-offset-1" : ""}`}
+      } ${lifted ? "scale-[1.04] shadow-xl" : ""} ${done || failed ? "opacity-60" : ""} ${active ? "ring-2 ring-offset-1" : ""}`}
       style={{
         top: (minutesIntoDay(start) / 60) * HOUR_HEIGHT + 1,
         height,

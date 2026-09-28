@@ -112,7 +112,7 @@ export function SettingsForm({
         {status.error && <span className="text-sm text-danger">{status.error}</span>}
       </div>
 
-      <Section icon={<Puzzle size={16} />} title="Chrome extension setup">
+      <Section id="extension" icon={<Puzzle size={16} />} title="Chrome extension setup">
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted">
           <li>
             Open <code className="rounded bg-surface px-1 text-ink">chrome://extensions</code> and turn
@@ -124,6 +124,10 @@ export function SettingsForm({
             project.
           </li>
           <li>Pin the QuestLog icon, click it, and sign in with this account.</li>
+          <li>
+            Repeat in every Chrome profile you use. Extensions are installed per profile, and
+            websites can&apos;t install them for you.
+          </li>
           <li>The badge shows how much XP you still need today. ✓ means you&apos;re unlocked.</li>
         </ol>
         <p className="mt-2 text-xs text-faint">
@@ -140,16 +144,18 @@ export function SettingsForm({
 }
 
 function Section({
+  id,
   icon,
   title,
   children,
 }: {
+  id?: string;
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-8">
+    <section id={id} className="mt-8 scroll-mt-6">
       <h2 className="flex items-center gap-2 font-semibold">
         <span className="grid size-7 place-items-center rounded-md bg-surface text-muted">{icon}</span>
         {title}

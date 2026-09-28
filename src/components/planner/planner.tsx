@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   CalendarArrowUp,
+  CalendarDays,
+  ListChecks,
+  TriangleAlert,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -51,6 +54,7 @@ import { ActiveQuestBar } from "./active-quest-bar";
 import { CalendarGrid } from "./calendar-grid";
 import { ContextMenu, type MenuItem } from "./context-menu";
 import { DailySummary, type MissedNotice } from "./daily-summary";
+import { MobileQuestList } from "./mobile-quest-list";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -89,7 +93,12 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [summary, setSummary] = useState<{ day: Date; notice?: MissedNotice } | null>(null);
   const missedCheckDone = useRef(false);
   const closeMenu = useCallback(() => setMenu(null), []);
-  const [view, setView] = useState<View>("week");
+  const [preferredView, setView] = useState<View>("week");
+  const isMobile = useIsMobile();
+  // Week view is too cramped on a phone, so phones always use the day view.
+  const view: View = isMobile ? "day" : preferredView;
+  const [mobileTab, setMobileTab] = useState<"calendar" | "quests">("calendar");
+  const extensionInstalled = useExtensionInstalled();
   const [date, setDate] = useState(() => startOfDay(new Date()));
   const [quests, setQuests] = useState<Quest[]>([]);
   const [todayQuests, setTodayQuests] = useState<Quest[]>([]);
@@ -442,7 +451,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     earnedToday >= profile.daily_xp_goal || (emergencyUntil !== null && emergencyUntil > new Date());
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col gap-5 border-r border-line bg-surface p-4 md:flex">
         <div className="flex items-center gap-2 px-1 font-semibold">
@@ -518,6 +527,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           </span>
         </Link>
 
+        {extensionInstalled === false && (
+          <Link
+            href="/settings#extension"
+            className="-mt-3 flex items-start gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted hover:text-ink"
+          >
+            <TriangleAlert size={14} className="mt-0.5 shrink-0 text-[#c27c0e]" />
+            <span>
+              Focus lock isn&apos;t installed in this browser profile.{" "}
+              <span className="font-medium text-accent">Set it up →</span>
+            </span>
+          </Link>
+        )}
+
         <MiniCalendar selected={date} onSelect={(d) => setDate(startOfDay(d))} />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -584,11 +606,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       </aside>
 
       {/* Main calendar */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-          <h1 className="mr-2 text-lg font-semibold tracking-tight">
+      <main className="flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+        <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <h1 className="mr-auto text-base font-semibold tracking-tight md:mr-2 md:text-lg">
             {view === "day"
-              ? date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
+              ? date.toLocaleDateString([], {
+                  weekday: isMobile ? "short" : "long",
+                  month: isMobile ? "short" : "long",
+                  day: "numeric",
+                })
               : rangeLabel(days[0], days[6])}
           </h1>
           <div className="flex items-center">
@@ -607,9 +633,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             Today
           </button>
 
-          <div className="flex-1" />
+          <div className="hidden flex-1 md:block" />
 
-          <div className="grid grid-cols-2 rounded-lg bg-surface p-0.5 text-sm">
+          <div className="hidden grid-cols-2 rounded-lg bg-surface p-0.5 text-sm md:grid">
             {(["day", "week"] as const).map((v) => (
               <button
                 key={v}
@@ -624,11 +650,39 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           </div>
           <button
             onClick={() => openNew(nextHalfHour(date))}
-            className="flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
+            className="hidden items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover md:flex"
           >
             <Plus size={15} /> New quest
           </button>
         </header>
+
+        {/* Phone: level, streak and today's XP (the sidebar is hidden on phones) */}
+        <button
+          onClick={() => setSummary({ day: new Date() })}
+          className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2 text-left md:hidden"
+        >
+          <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent">
+            Lv {lvl.level}
+          </span>
+          <span
+            className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
+              streak.current ? "bg-[#fcf3e2] text-[#c27c0e]" : "bg-canvas text-faint"
+            }`}
+          >
+            <Flame size={12} /> {streak.current}
+          </span>
+          <span className="flex-1">
+            <span className="block h-1.5 overflow-hidden rounded-full bg-line">
+              <span
+                className="block h-full rounded-full bg-xp transition-all"
+                style={{ width: `${Math.min(100, (earnedToday / profile.daily_xp_goal) * 100)}%` }}
+              />
+            </span>
+          </span>
+          <span className="text-xs text-muted">
+            <span className="font-semibold text-xp">{earnedToday}</span>/{profile.daily_xp_goal} XP
+          </span>
+        </button>
 
         {activeQuest && (
           <ActiveQuestBar
@@ -648,16 +702,58 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           </div>
         )}
 
-        <CalendarGrid
-          days={days}
-          quests={quests}
-          onCreate={openNew}
-          onEdit={openEdit}
-          onReschedule={reschedule}
-          onQuestMenu={(quest, x, y) => setMenu({ kind: "quest", quest, x, y })}
-          onSlotMenu={(start, x, y) => setMenu({ kind: "slot", start, x, y })}
-        />
+        {isMobile && mobileTab === "quests" ? (
+          <MobileQuestList
+            quests={quests}
+            onOpen={openEdit}
+            onStatus={runStatus}
+            onNew={() => openNew(nextHalfHour(date))}
+          />
+        ) : (
+          <CalendarGrid
+            days={days}
+            quests={quests}
+            onCreate={openNew}
+            onEdit={openEdit}
+            onReschedule={reschedule}
+            onQuestMenu={(quest, x, y) => setMenu({ kind: "quest", quest, x, y })}
+            onSlotMenu={(start, x, y) => setMenu({ kind: "slot", start, x, y })}
+          />
+        )}
       </main>
+
+      {/* Phone bottom navigation */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <div className="grid h-16 grid-cols-5 items-center">
+          <NavItem
+            label="Calendar"
+            active={mobileTab === "calendar"}
+            onClick={() => setMobileTab("calendar")}
+          >
+            <CalendarDays size={20} />
+          </NavItem>
+          <NavItem label="Quests" active={mobileTab === "quests"} onClick={() => setMobileTab("quests")}>
+            <ListChecks size={20} />
+          </NavItem>
+          <button
+            aria-label="New quest"
+            onClick={() => openNew(nextHalfHour(date))}
+            className="mx-auto -mt-6 grid size-14 place-items-center rounded-full bg-accent text-white shadow-lg shadow-accent/30 active:scale-95"
+          >
+            <Plus size={26} />
+          </button>
+          <NavItem label="Summary" onClick={() => setSummary({ day: date })}>
+            <NotebookText size={20} />
+          </NavItem>
+          <Link
+            href="/settings"
+            className="flex flex-col items-center gap-0.5 text-[10px] font-medium text-muted"
+          >
+            <Settings size={20} />
+            Settings
+          </Link>
+        </div>
+      </nav>
 
       {draft && (
         <QuestModal
@@ -691,7 +787,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       )}
 
       {toast && (
-        <div className="pointer-events-none fixed right-6 top-6 z-[60] animate-[toast-in_300ms_ease-out] rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl">
+        <div className="pointer-events-none fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[60] animate-[toast-in_300ms_ease-out] rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl sm:inset-x-auto sm:right-6 sm:top-6">
           {"failed" in toast ? (
             <>
               <p className="text-2xl font-bold text-danger">−{toast.lost} XP</p>
@@ -716,6 +812,68 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         </div>
       )}
     </div>
+  );
+}
+
+function NavItem({
+  label,
+  active = false,
+  onClick,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-0.5 text-[10px] font-medium ${
+        active ? "text-accent" : "text-muted"
+      }`}
+    >
+      {children}
+      {label}
+    </button>
+  );
+}
+
+const MOBILE_QUERY = "(max-width: 767px)";
+
+function useIsMobile() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const media = window.matchMedia(MOBILE_QUERY);
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(MOBILE_QUERY).matches,
+    () => false,
+  );
+}
+
+/**
+ * The QuestLog extension marks <html data-questlog-extension>. Returns true/false in desktop
+ * Chromium browsers (where the extension can run) and null elsewhere, e.g. on phones.
+ */
+function useExtensionInstalled() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const observer = new MutationObserver(onChange);
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-questlog-extension"],
+      });
+      return () => observer.disconnect();
+    },
+    () => {
+      const ua = navigator.userAgent;
+      const desktopChromium = /Chrome|Chromium|Edg\//.test(ua) && !/Mobile|Android/.test(ua);
+      if (!desktopChromium) return null;
+      return document.documentElement.dataset.questlogExtension !== undefined;
+    },
+    () => null,
   );
 }
 
