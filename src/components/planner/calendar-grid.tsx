@@ -137,6 +137,16 @@ export function CalendarGrid({
     setDrag(d);
   }
 
+  // Lets the day-swipe gesture (planner.tsx) ignore touches that moved a quest.
+  useEffect(() => {
+    if (drag) {
+      document.documentElement.dataset.questDragging = "1";
+      return;
+    }
+    const t = setTimeout(() => delete document.documentElement.dataset.questDragging, 50);
+    return () => clearTimeout(t);
+  }, [drag]);
+
   function startDrag(e: React.PointerEvent, quest: Quest, mode: Drag["mode"]) {
     lastPointerRef.current = e.pointerType;
     // Imported events follow their calendar feed, so they open on click instead of dragging.

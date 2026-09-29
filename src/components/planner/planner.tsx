@@ -262,6 +262,59 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     setDate((d) => addDays(d, dir * (view === "day" ? 1 : 7)));
   }
 
+  // ---------- swipe between days (touch) and weeks/days (trackpad) ----------
+  const swipeArea = useRef<HTMLDivElement>(null);
+  const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
+  const wheel = useRef({ sum: 0, last: 0, quietUntil: 0 });
+
+  /** Step to the next/previous day (or week) with a short slide so the direction is clear. */
+  function go(dir: number) {
+    step(dir);
+    swipeArea.current?.animate(
+      [
+        { transform: `translateX(${dir * 36}px)`, opacity: 0.35 },
+        { transform: "translateX(0)", opacity: 1 },
+      ],
+      { duration: 200, easing: "ease-out" },
+    );
+  }
+
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    touchStart.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    // Holding and dragging a quest is not a swipe.
+    if (!start || document.documentElement.dataset.questDragging) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // A quick, mostly sideways flick: right-to-left = next, left-to-right = previous.
+    if (Date.now() - start.t < 700 && Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? 1 : -1);
+  }
+
+  function onWheel(e: React.WheelEvent) {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    const w = wheel.current;
+    const now = Date.now();
+    // Trackpads keep sending sideways "momentum" after a swipe; wait for it to die down.
+    if (now < w.quietUntil) {
+      w.quietUntil = now + 250;
+      return;
+    }
+    if (now - w.last > 250) w.sum = 0;
+    w.last = now;
+    w.sum += e.deltaX;
+    if (Math.abs(w.sum) > 120) {
+      go(w.sum > 0 ? 1 : -1);
+      w.sum = 0;
+      w.quietUntil = now + 400;
+    }
+  }
+
   function openNew(start: Date) {
     setDraft({
       title: "",
@@ -762,10 +815,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             Today
           </button>
           <div className="flex items-center">
-            <IconButton label="Previous" onClick={() => step(-1)}>
+            <IconButton label="Previous" onClick={() => go(-1)}>
               <ChevronLeft size={16} />
             </IconButton>
-            <IconButton label="Next" onClick={() => step(1)}>
+            <IconButton label="Next" onClick={() => go(1)}>
               <ChevronRight size={16} />
             </IconButton>
           </div>
@@ -848,6 +901,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           </div>
         )}
 
+        <div
+          ref={swipeArea}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          onWheel={onWheel}
+          // Stops the browser treating a sideways trackpad swipe as Back/Forward.
+          style={{ overscrollBehaviorX: "none" }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
         {isMobile && mobileTab === "quests" ? (
           <MobileQuestList
             quests={quests.filter((q) => !isDeadline(q))}
@@ -867,6 +929,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             layers={layerMap}
           />
         )}
+        </div>
       </main>
 
       {/* Phone bottom navigation */}
