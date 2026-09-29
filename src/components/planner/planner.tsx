@@ -138,8 +138,26 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
     ]);
-    setQuests(range);
-    setTodayQuests(todays);
+    // Unfinished quests follow the latest scorer; finished ones keep the XP they were settled with.
+    const rescored = new Map<string, Pick<Quest, "difficulty" | "xp">>();
+    for (const q of [...range, ...todays]) {
+      if (rescored.has(q.id) || (q.status !== "planned" && q.status !== "active")) continue;
+      const { rank, xp } = assessQuest({
+        title: q.title,
+        notes: q.notes,
+        category: q.category,
+        durationMin: q.duration_min,
+      });
+      if (rank !== q.difficulty || xp !== q.xp) rescored.set(q.id, { difficulty: rank, xp });
+    }
+    if (rescored.size) {
+      await Promise.all(
+        [...rescored].map(([id, patch]) => supabase.from("quests").update(patch).eq("id", id)),
+      );
+    }
+    const withScores = (qs: Quest[]) => qs.map((q) => ({ ...q, ...rescored.get(q.id) }));
+    setQuests(withScores(range));
+    setTodayQuests(withScores(todays));
     setActiveQuest((active.data as Quest | null) ?? null);
 
     // The streak is alive if the goal was reached today or yesterday.

@@ -1,0 +1,131 @@
+// Trains the quest scorer: fits linear weights to the labelled examples, reports accuracy on
+// held-out examples, then writes src/lib/scorer/weights.ts (trained on all examples).
+// Usage: npm run scorer:train
+import { writeFileSync } from "node:fs";
+import { EXAMPLES } from "../src/lib/scorer/training-data.ts";
+import { extractFeatures } from "../src/lib/scorer/features.ts";
+import { rankFor } from "../src/lib/scorer/model.ts";
+
+const RANKS = ["E", "D", "C", "B", "A", "S"];
+const rows = EXAMPLES.map(([title, category, minutes, score]) => ({
+  title,
+  category,
+  minutes,
+  y: score,
+  f: extractFeatures({ title, category, durationMin: minutes }),
+}));
+
+// ---------- ridge regression ----------
+
+function solve(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]];
+    if (Math.abs(M[c][c]) < 1e-12) continue;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const k = M[r][c] / M[c][c];
+      for (let j = c; j <= n; j++) M[r][j] -= k * M[c][j];
+    }
+  }
+  return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[n] / row[i]));
+}
+
+function fit(data, lambda) {
+  const names = [...new Set(data.flatMap((r) => Object.keys(r.f.x)))].sort();
+  const idx = new Map(names.map((n, i) => [n, i]));
+  const p = names.length;
+  const A = Array.from({ length: p }, () => new Array(p).fill(0));
+  const b = new Array(p).fill(0);
+  for (const r of data) {
+    const entries = Object.entries(r.f.x).map(([n, v]) => [idx.get(n), v]);
+    for (const [i, vi] of entries) {
+      b[i] += vi * r.y;
+      for (const [j, vj] of entries) A[i][j] += vi * vj;
+    }
+  }
+  names.forEach((n, i) => {
+    if (n !== "bias") A[i][i] += lambda; // don't shrink the intercept
+  });
+  const w = solve(A, b);
+  return Object.fromEntries(names.map((n, i) => [n, w[i]]));
+}
+
+const predict = (w, x) => Object.entries(x).reduce((s, [n, v]) => s + (w[n] ?? 0) * v, 0);
+const clampScore = (s) => Math.min(100, Math.max(0, s));
+
+function evaluate(w, data) {
+  let abs = 0;
+  let exact = 0;
+  let near = 0;
+  const results = data.map((r) => {
+    const pred = clampScore(predict(w, r.f.x));
+    const [pr, lr] = [RANKS.indexOf(rankFor(pred)), RANKS.indexOf(rankFor(r.y))];
+    abs += Math.abs(pred - r.y);
+    if (pr === lr) exact++;
+    if (Math.abs(pr - lr) <= 1) near++;
+    return { ...r, pred, err: pred - r.y };
+  });
+  const n = data.length;
+  return { mae: abs / n, exact: exact / n, near: near / n, results };
+}
+
+// ---------- choose regularisation by 5-fold cross-validation ----------
+
+const test = rows.filter((_, i) => i % 5 === 4);
+const train = rows.filter((_, i) => i % 5 !== 4);
+
+let best = { lambda: 1, mae: Infinity };
+for (const lambda of [0.1, 0.3, 1, 3, 10, 30]) {
+  let total = 0;
+  for (let k = 0; k < 5; k++) {
+    const w = fit(train.filter((_, i) => i % 5 !== k), lambda);
+    total += evaluate(w, train.filter((_, i) => i % 5 === k)).mae;
+  }
+  if (total / 5 < best.mae) best = { lambda, mae: total / 5 };
+}
+
+// ---------- honest report on held-out examples ----------
+
+const pct = (v) => `${Math.round(v * 100)}%`;
+const wTrain = fit(train, best.lambda);
+const trainEval = evaluate(wTrain, train);
+const testEval = evaluate(wTrain, test);
+
+console.log(`\nExamples: ${rows.length} (${train.length} train, ${test.length} held out)   λ = ${best.lambda}`);
+console.log(`                     avg error   exact rank   within 1 rank`);
+for (const [name, e] of [["Training set", trainEval], ["Held-out (unseen)", testEval]]) {
+  console.log(`${name.padEnd(20)} ${e.mae.toFixed(1).padStart(6)} pts   ${pct(e.exact).padStart(8)}   ${pct(e.near).padStart(10)}`);
+}
+
+console.log("\nBiggest misses on held-out examples:");
+for (const r of [...testEval.results].sort((a, b) => Math.abs(b.err) - Math.abs(a.err)).slice(0, 10)) {
+  const why = [r.f.task?.type.id, r.f.area?.area.id, r.f.level?.label].filter(Boolean).join(", ") || "no clues";
+  console.log(`  ${r.title.padEnd(42)} label ${String(r.y).padStart(3)} (${rankFor(r.y)})  got ${String(Math.round(r.pred)).padStart(3)} (${rankFor(r.pred)})  [${why}]`);
+}
+
+const clueless = rows.filter((r) => !r.f.task && !r.f.area);
+if (clueless.length) {
+  console.log(`\nTitles with no task type or subject detected (${clueless.length}):`);
+  console.log(`  ${clueless.map((r) => r.title).join(" · ")}`);
+}
+
+// ---------- final weights on all examples ----------
+
+const wAll = fit(rows, best.lambda);
+const allEval = evaluate(wAll, rows);
+console.log(`\nFinal model (all ${rows.length} examples): avg error ${allEval.mae.toFixed(1)} pts, exact rank ${pct(allEval.exact)}`);
+
+const lines = Object.entries(wAll)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([n, v]) => `  ${JSON.stringify(n)}: ${Number(v.toFixed(3))},`);
+writeFileSync(
+  new URL("../src/lib/scorer/weights.ts", import.meta.url),
+  `// Generated by scripts/train-scorer.mjs from ${rows.length} labelled examples. Do not edit by hand;\n` +
+    `// run \`npm run scorer:train\`. Held-out accuracy: ${pct(testEval.exact)} exact rank, ${pct(testEval.near)} within one rank.\n` +
+    `export const WEIGHTS: Record<string, number> = {\n${lines.join("\n")}\n};\n`,
+);
+console.log("Wrote src/lib/scorer/weights.ts\n");

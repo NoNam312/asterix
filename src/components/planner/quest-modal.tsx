@@ -37,6 +37,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  // New quests pick their category from the title until you choose one yourself.
+  const [categoryPicked, setCategoryPicked] = useState(!!initial.id);
+  const [autoCategory, setAutoCategory] = useState(false);
   const isNew = !initial.id;
   const set = <K extends keyof QuestDraft>(key: K, value: QuestDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
@@ -92,7 +95,18 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         <input
           autoFocus
           value={draft.title}
-          onChange={(e) => set("title", e.target.value)}
+          onChange={(e) => {
+            const title = e.target.value;
+            if (categoryPicked) return set("title", title);
+            const suggested = assessQuest({
+              title,
+              notes: draft.notes,
+              category: draft.category,
+              durationMin: draft.duration,
+            }).suggestedCategory;
+            setAutoCategory(!!suggested);
+            setDraft((d) => ({ ...d, title, category: suggested ?? d.category }));
+          }}
           placeholder="What's the quest? e.g. Chemistry past paper"
           maxLength={200}
           className="mt-3 w-full border-none text-xl font-semibold outline-none placeholder:text-faint"
@@ -142,7 +156,11 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               <button
                 key={key}
                 type="button"
-                onClick={() => set("category", key)}
+                onClick={() => {
+                  set("category", key);
+                  setCategoryPicked(true);
+                  setAutoCategory(false);
+                }}
                 className="rounded-full border px-2.5 py-1 text-xs font-medium transition"
                 style={
                   active
@@ -154,6 +172,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               </button>
             );
           })}
+          {autoCategory && <span className="self-center text-[11px] text-faint">auto-detected</span>}
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">

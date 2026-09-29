@@ -9,7 +9,8 @@
     "lint": "eslint",
     "extension:config": "node scripts/extension-config.mjs",
     "prebuild": "node scripts/package-extension.mjs",
-    "extension:package": "node scripts/package-extension.mjs"
+    "extension:package": "node scripts/package-extension.mjs",
+    "scorer:train": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/train-scorer.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
