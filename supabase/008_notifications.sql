@@ -140,8 +140,10 @@ grant execute on function public.claim_due_reminders(text) to anon;
 grant execute on function public.forget_push_endpoint(text, text) to anon;
 
 -- ---------- run every minute ----------
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
+-- Supabase's documented setup for these extensions.
+create extension if not exists pg_cron with schema pg_catalog;
+grant usage on schema cron to postgres;
+create extension if not exists pg_net with schema extensions;
 
 select cron.unschedule('questlog-reminders')
 where exists (select 1 from cron.job where jobname = 'questlog-reminders');
