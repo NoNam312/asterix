@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Check, Flag, Square } from "lucide-react";
-import type { Rank } from "@/lib/difficulty";
+import { xpFor, type Rank } from "@/lib/difficulty";
 import { CATEGORIES, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
 
@@ -18,6 +18,9 @@ export function ActiveQuestBar({ quest, onComplete, onFail, onStop }: Props) {
   const now = useTicker();
   const started = new Date(quest.started_at ?? quest.start_at).getTime();
   const totalMs = quest.duration_min * 60_000;
+  // Timed quests pay for time actually worked, up to 150% of the plan (see 006_xp_by_effort.sql).
+  const workedMin = Math.min(1.5 * quest.duration_min, Math.max(0, (now - started) / 60_000));
+  const xpSoFar = xpFor((quest.xp * 60) / quest.duration_min, workedMin);
   const remainingMs = started + totalMs - now;
   const overtime = remainingMs <= 0;
   const progress = Math.min(1, Math.max(0, 1 - remainingMs / totalMs));
@@ -43,7 +46,9 @@ export function ActiveQuestBar({ quest, onComplete, onFail, onStop }: Props) {
           <p className="flex items-center gap-2 truncate font-semibold">
             {quest.difficulty && <RankBadge rank={quest.difficulty as Rank} />}
             {quest.title}
-            <span className="text-sm font-medium text-xp">+{quest.xp} XP</span>
+            <span className="text-sm font-medium text-xp" title={`Planned: +${quest.xp} XP`}>
+              +{xpSoFar} XP so far
+            </span>
           </p>
         </div>
         <span

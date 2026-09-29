@@ -28,7 +28,15 @@ const SEGMENTS = [...RANK_THRESHOLDS]
  * Shows how hard a quest is: rank, XP, where it sits on the E–S scale,
  * what the scorer recognised, and (on request) how each part moved the score.
  */
-export function ScorePanel({ assessment, xpLabel }: { assessment: Assessment; xpLabel: React.ReactNode }) {
+export function ScorePanel({
+  assessment,
+  xpLabel,
+  minutes,
+}: {
+  assessment: Assessment;
+  xpLabel: React.ReactNode;
+  minutes: number;
+}) {
   const [open, setOpen] = useState(false);
   const { rank, score, detected, reasons } = assessment;
   const maxPoints = Math.max(10, ...reasons.map((r) => Math.abs(r.points)));
@@ -40,6 +48,10 @@ export function ScorePanel({ assessment, xpLabel }: { assessment: Assessment; xp
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">
             Rank {rank} quest · {xpLabel}
+          </p>
+          <p className="text-[11px] text-muted">
+            {assessment.xpPerHour} XP per hour × {formatMinutes(minutes)}
+            <span className="text-faint"> · timed quests pay for the time you actually work</span>
           </p>
           <ScoreScale score={score} />
         </div>
@@ -102,13 +114,22 @@ export function ScorePanel({ assessment, xpLabel }: { assessment: Assessment; xp
                   </span>
                 </li>
               ))}
-              <li className="pt-1 text-[11px] text-faint">Difficulty score {score} / 100</li>
+              <li className="pt-1 text-[11px] text-faint">
+                Difficulty score {score} / 100 → {assessment.xpPerHour} XP per hour. Length doesn&apos;t change
+                the rank; it multiplies the XP.
+              </li>
             </ul>
           )}
         </>
       )}
     </div>
   );
+}
+
+function formatMinutes(min: number) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return [h && `${h}h`, m && `${m}m`].filter(Boolean).join(" ");
 }
 
 /** "Very hard" in the colour of the rank it tends to produce. */

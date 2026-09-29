@@ -17,8 +17,12 @@ export type Detected = { kind: FactorKind; label: string; hint?: string; difficu
 export type Reason = { kind: FactorKind; label: string; points: number };
 
 export type Assessment = {
+  /** How demanding the work is (0–100), judged for one hour so length doesn't inflate it. */
   score: number;
   rank: Rank;
+  /** XP earned per hour of this kind of work. */
+  xpPerHour: number;
+  /** Planned XP: xpPerHour × planned hours. */
   xp: number;
   detected: Detected[];
   reasons: Reason[];
@@ -92,7 +96,8 @@ function taskName(typeLabel: string, matched: string) {
 
 /** Which aspect of the quest a model feature describes. */
 function kindOf(feature: string): FactorKind {
-  if (feature.startsWith("duration") || feature === "multi") return "time";
+  if (feature.startsWith("duration")) return "time";
+  if (feature === "multi") return "extra";
   if (feature.startsWith("area")) return "subject";
   if (feature.startsWith("level")) return "level";
   if (feature.startsWith("mod")) return "extra";
@@ -143,15 +148,28 @@ const DOMAIN_WORDS: Partial<Record<NonNullable<Features["domain"]>, string>> = {
   hobby: "hobby",
 };
 
+/** Feature value for a one-hour quest (see duration in features.ts). */
+const ONE_HOUR = Math.log2(1 + 60 / 30);
+
+/** XP for a quest: its hourly rate × hours worked, rounded to 5 (at least 5). */
+export function xpFor(xpPerHour: number, minutes: number) {
+  return Math.max(5, Math.round((xpPerHour * minutes) / 60 / 5) * 5);
+}
+
 export function assessQuest(input: QuestInput): Assessment {
   const f = extractFeatures(input);
-  const score = Math.round(Math.min(100, Math.max(0, predict(f.x))));
+  // Judge difficulty at a one-hour baseline: the rank says how demanding the work is,
+  // and time is paid separately (XP per hour × hours), so XP grows in step with effort.
+  const x = Object.fromEntries(
+    Object.entries(f.x).map(([name, value]) => [name, name.startsWith("duration:") ? ONE_HOUR : value]),
+  );
+  const score = Math.round(Math.min(100, Math.max(0, predict(x))));
   const { detected, labels } = describe(f, input.durationMin);
 
-  // Sum each feature's contribution into one reason per aspect (time, subject, task, …).
+  // Sum each feature's contribution into one reason per aspect (subject, task, level, …).
   const totals = new Map<FactorKind, number>();
-  for (const [name, value] of Object.entries(f.x)) {
-    if (name === "bias") continue;
+  for (const [name, value] of Object.entries(x)) {
+    if (name === "bias" || name.startsWith("duration:")) continue;
     const kind = kindOf(name);
     totals.set(kind, (totals.get(kind) ?? 0) + (WEIGHTS[name] ?? 0) * value);
   }
@@ -160,7 +178,8 @@ export function assessQuest(input: QuestInput): Assessment {
     .filter((r) => r.points !== 0)
     .sort((a, b) => Math.abs(b.points) - Math.abs(a.points));
 
-  const xp = Math.max(5, Math.round(((score + 10) * Math.sqrt(input.durationMin / 60)) / 5) * 5);
+  const xpPerHour = score + 10;
+  const xp = xpFor(xpPerHour, input.durationMin);
   const kind = f.domain && DOMAIN_WORDS[f.domain];
   const warning =
     f.ignoredSubject && f.task && kind
@@ -173,5 +192,15 @@ export function assessQuest(input: QuestInput): Assessment {
       ? "Say what you're doing (lecture, tute, assignment, revision…). Vague quests get the lowest study rate."
       : "Add what kind of task this is for a fairer score. Vague quests get the lowest rate.";
 
-  return { score, rank: rankFor(score), xp, detected, reasons, warning, tip, suggestedCategory: f.suggestedCategory };
+  return {
+    score,
+    rank: rankFor(score),
+    xpPerHour,
+    xp,
+    detected,
+    reasons,
+    warning,
+    tip,
+    suggestedCategory: f.suggestedCategory,
+  };
 }

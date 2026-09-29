@@ -115,6 +115,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         {draft.title.trim() && (
           <ScorePanel
             assessment={assessment}
+            minutes={draft.duration}
             xpLabel={
               initial.status === "failed" ? (
                 <span className="text-danger">

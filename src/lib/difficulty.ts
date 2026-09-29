@@ -5,6 +5,7 @@ export {
   assessQuest,
   difficultyWord,
   RANK_THRESHOLDS,
+  xpFor,
   type Assessment,
   type Detected,
   type FactorKind,

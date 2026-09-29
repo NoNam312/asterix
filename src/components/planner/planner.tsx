@@ -304,6 +304,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     });
     if (error) return error.message;
     let newTotal = data as number;
+    // What completing actually paid (timed quests pay for time worked).
+    const earned = newTotal - profile.total_xp;
 
     // Completing a quest may push its day over the goal: claim the streak bonus.
     let bonus: { bonus: number; streak: number } | undefined;
@@ -326,7 +328,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     setProfile((p) => ({ ...p, total_xp: newTotal }));
     if (status === "completed") {
       showToast({
-        xp: questXp,
+        xp: earned > 0 ? earned : questXp,
         newLevel: after > before ? after : undefined,
         bonus: bonus?.bonus,
         streak: bonus?.streak,
