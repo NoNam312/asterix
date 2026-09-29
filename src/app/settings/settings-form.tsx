@@ -7,7 +7,7 @@ import { ChangePasswordForm } from "@/components/change-password-form";
 import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
 import { IphoneLock } from "./iphone-lock";
 import { createClient } from "@/lib/supabase/client";
-import type { LockMode } from "@/lib/quests";
+import { CATEGORIES, CATEGORY_KEYS, type Category, type LockMode } from "@/lib/quests";
 
 const LOCK_MODES: { value: LockMode; title: string; description: string }[] = [
   {
@@ -30,6 +30,7 @@ const LOCK_MODES: { value: LockMode; title: string; description: string }[] = [
 type Settings = {
   daily_xp_goal: number;
   lock_mode: LockMode;
+  lock_categories: Category[];
   blocked_sites: string[];
   allowed_urls: string[];
 };
@@ -137,6 +138,49 @@ export function SettingsForm({
             </label>
           ))}
         </div>
+      </Section>
+
+      <Section icon={<Lock size={16} />} title="Which quests lock your apps?">
+        <p className="text-sm text-muted">
+          Only these kinds of quests count. Classes imported from your timetable count as Study.
+          {settings.lock_mode === "all_day" && " (Doesn't apply to “All day until the goal”, which is always strict.)"}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {CATEGORY_KEYS.map((key) => {
+            const cat = CATEGORIES[key];
+            const on = settings.lock_categories.includes(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  setSettings((s) => ({
+                    ...s,
+                    lock_categories: on ? s.lock_categories.filter((c) => c !== key) : [...s.lock_categories, key],
+                  }))
+                }
+                className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition"
+                style={
+                  on
+                    ? { background: cat.soft, borderColor: cat.color, color: cat.color }
+                    : { borderColor: "var(--color-line)", color: "var(--color-muted)" }
+                }
+              >
+                <span
+                  className="grid size-4 place-items-center rounded border text-[10px]"
+                  style={{ borderColor: on ? cat.color : "var(--color-line)", background: on ? cat.color : "transparent", color: "white" }}
+                >
+                  {on && "✓"}
+                </span>
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+        {settings.lock_categories.length === 0 && settings.lock_mode !== "all_day" && (
+          <p className="mt-2 text-xs text-danger">With nothing ticked, your apps will never be locked.</p>
+        )}
       </Section>
 
       <Section icon={<Lock size={16} />} title="Blocked sites">

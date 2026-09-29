@@ -606,7 +606,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const emergencyUntil = profile.unlocked_until ? new Date(profile.unlocked_until) : null;
   // Same rule as the extension and iPhone lock (supabase/011_lock_modes.sql).
   const lockMode = profile.lock_mode ?? "during_quests";
-  const unfinished = todayQuests.filter((q) => q.status === "planned" || q.status === "active");
+  const lockCategories = profile.lock_categories ?? ["study", "other"];
+  const unfinished = todayQuests.filter(
+    (q) => (q.status === "planned" || q.status === "active") && lockCategories.includes(q.category),
+  );
   const questsLeft = unfinished.filter((q) => new Date(q.start_at).getTime() + q.duration_min * 60_000 > Date.now()).length;
   const questNow = unfinished.find(
     (q) =>

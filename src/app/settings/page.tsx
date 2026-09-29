@@ -20,6 +20,7 @@ export default async function SettingsPage() {
         blocked_sites: profile?.blocked_sites ?? [],
         allowed_urls: profile?.allowed_urls ?? [],
         lock_mode: profile?.lock_mode ?? "during_quests",
+        lock_categories: profile?.lock_categories ?? ["study", "other"],
       }}
       email={auth.user.email ?? ""}
       lockToken={profile?.lock_token ?? null}

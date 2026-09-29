@@ -48,6 +48,8 @@ export type Profile = {
   unlocked_until?: string | null;
   /** When apps are locked (see supabase/011_lock_modes.sql). */
   lock_mode?: LockMode;
+  /** Quest categories that lock apps (see supabase/012_lock_categories.sql). */
+  lock_categories?: Category[];
 };
 
 export type LockMode = "during_quests" | "until_done" | "all_day";
