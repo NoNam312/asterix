@@ -736,15 +736,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       {/* Main calendar */}
       <main className="flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <h1 className="mr-auto text-base font-semibold tracking-tight md:mr-2 md:text-lg">
-            {view === "day"
-              ? date.toLocaleDateString([], {
-                  weekday: isMobile ? "short" : "long",
-                  month: isMobile ? "short" : "long",
-                  day: "numeric",
-                })
-              : rangeLabel(days[0], days[6])}
-          </h1>
+          {/* Buttons come before the date so they stay put while the date's width changes. */}
+          <button
+            onClick={() => setDate(startOfDay(new Date()))}
+            disabled={days.some((d) => isSameDay(d, new Date()))}
+            className="rounded-md border border-line px-2.5 py-1 text-sm hover:bg-surface disabled:text-faint disabled:hover:bg-transparent"
+          >
+            Today
+          </button>
           <div className="flex items-center">
             <IconButton label="Previous" onClick={() => step(-1)}>
               <ChevronLeft size={16} />
@@ -753,13 +752,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               <ChevronRight size={16} />
             </IconButton>
           </div>
-          <button
-            onClick={() => setDate(startOfDay(new Date()))}
-            disabled={days.some((d) => isSameDay(d, new Date()))}
-            className="rounded-md border border-line px-2.5 py-1 text-sm hover:bg-surface disabled:text-faint disabled:hover:bg-transparent"
-          >
-            Today
-          </button>
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight md:flex-none md:text-lg">
+            {view === "day"
+              ? date.toLocaleDateString([], {
+                  weekday: isMobile ? "short" : "long",
+                  month: isMobile ? "short" : "long",
+                  day: "numeric",
+                })
+              : rangeLabel(days[0], days[6])}
+          </h1>
 
           <div className="hidden flex-1 md:block" />
 
