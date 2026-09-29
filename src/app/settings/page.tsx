@@ -21,6 +21,13 @@ export default async function SettingsPage() {
         allowed_urls: profile?.allowed_urls ?? [],
       }}
       email={auth.user.email ?? ""}
+      notificationPrefs={{
+        notify_quests: profile?.notify_quests ?? true,
+        notify_classes: profile?.notify_classes ?? true,
+        notify_deadlines: profile?.notify_deadlines ?? true,
+        notify_time_up: profile?.notify_time_up ?? true,
+        remind_minutes: profile?.remind_minutes ?? 10,
+      }}
       needsMigration={!profile || !("blocked_sites" in profile)}
     />
   );

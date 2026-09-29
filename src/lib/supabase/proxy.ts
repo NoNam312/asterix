@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured, SUPABASE_KEY, SUPABASE_URL } from "./env";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /api/push/dispatch is called by the database scheduler (it checks its own secret).
+const PUBLIC_PATHS = ["/login", "/auth", "/api/push/dispatch"];
 
 /** Refreshes the auth session cookie and redirects signed-out users to /login. */
 export async function updateSession(request: NextRequest) {

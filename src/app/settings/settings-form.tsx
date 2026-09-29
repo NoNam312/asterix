@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, KeyRound, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ArrowLeft, Bell, Download, KeyRound, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
 import { ChangePasswordForm } from "@/components/change-password-form";
+import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
 import { createClient } from "@/lib/supabase/client";
 
 type Settings = {
@@ -16,10 +17,12 @@ export function SettingsForm({
   initial,
   email,
   needsMigration,
+  notificationPrefs,
 }: {
   initial: Settings;
   email: string;
   needsMigration: boolean;
+  notificationPrefs: NotificationPrefs;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [settings, setSettings] = useState(initial);
@@ -55,6 +58,13 @@ export function SettingsForm({
           settings.
         </p>
       )}
+
+      <Section id="notifications" icon={<Bell size={16} />} title="Notifications">
+        <p className="mb-3 text-sm text-muted">
+          Get a reminder on your phone before quests and classes start, when time is up, and before due dates.
+        </p>
+        <NotificationSettings initial={notificationPrefs} />
+      </Section>
 
       <Section icon={<Target size={16} />} title="Daily XP goal">
         <p className="text-sm text-muted">
