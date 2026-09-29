@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Flag, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { CalendarDays, Check, Flag, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
@@ -20,6 +20,9 @@ export type QuestDraft = {
   xp?: number;
   /** XP lost when this quest failed. */
   penalty?: number;
+  /** Name of the calendar layer this was imported from (read-only when set). */
+  source?: string;
+  kind?: "task" | "deadline";
 };
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
@@ -72,6 +75,11 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
     durationMin: draft.duration,
   });
 
+  // Imported calendar events follow their feed, so their details are read-only.
+  const imported = !!initial.source;
+  const deadline = initial.kind === "deadline";
+  const when = new Date(`${draft.date}T${draft.time}`);
+
   const durationOptions = DURATIONS.includes(draft.duration)
     ? DURATIONS
     : [...DURATIONS, draft.duration].sort((a, b) => a - b);
@@ -86,14 +94,17 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-line bg-canvas p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-xl sm:pb-5"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted">{isNew ? "New quest" : "Edit quest"}</h2>
+          <h2 className="text-sm font-medium text-muted">
+            {deadline ? "Due date" : imported ? "Class" : isNew ? "New quest" : "Edit quest"}
+          </h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-muted hover:bg-surface">
             <X size={16} />
           </button>
         </div>
 
         <input
-          autoFocus
+          autoFocus={!imported}
+          readOnly={imported}
           value={draft.title}
           onChange={(e) => {
             const title = e.target.value;
@@ -112,7 +123,23 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           className="mt-3 w-full border-none text-xl font-semibold outline-none placeholder:text-faint"
         />
 
-        {draft.title.trim() && (
+        {imported && (
+          <p className="mt-2 flex items-start gap-1.5 rounded-md bg-surface px-3 py-2 text-xs text-muted">
+            <CalendarDays size={13} className="mt-0.5 shrink-0" />
+            <span>
+              {deadline ? "Due " : ""}
+              {when.toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+              {!deadline && ` · ${formatDuration(draft.duration)}`}. From <strong>{initial.source}</strong>, synced
+              automatically.{" "}
+              {deadline
+                ? "Due dates are markers with no XP; plan quests before it to earn XP."
+                : "To stop importing this class every week, right-click it (or hold it on a phone) → Stop importing."}
+            </span>
+          </p>
+        )}
+        {draft.notes && imported && <p className="mt-2 text-sm text-muted">{draft.notes}</p>}
+
+        {draft.title.trim() && !deadline && (
           <ScorePanel
             assessment={assessment}
             minutes={draft.duration}
@@ -131,6 +158,8 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           />
         )}
 
+        {!imported && (
+        <>
         <div className="mt-4 flex flex-wrap gap-1.5">
           {CATEGORY_KEYS.map((key) => {
             const cat = CATEGORIES[key];
@@ -214,8 +243,10 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             className={`${inputClass} resize-none`}
           />
         </Labeled>
+        </>
+        )}
 
-        {!isNew && (
+        {!isNew && !deadline && (
           <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-line pt-4">
             {initial.status === "planned" && (
               <>
@@ -253,7 +284,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         )}
 
         <div className="mt-5 flex items-center gap-2">
-          {!isNew && (
+          {!isNew && !imported && (
             <button
               type="button"
               onClick={async () => setError(await onDelete(initial.id!))}
@@ -268,8 +299,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             onClick={onClose}
             className="rounded-md px-3 py-1.5 text-sm text-muted hover:bg-surface"
           >
-            Cancel
+            {imported ? "Close" : "Cancel"}
           </button>
+          {!imported && (
           <button
             type="submit"
             disabled={saving || !draft.title.trim()}
@@ -277,6 +309,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           >
             {saving ? "Saving…" : isNew ? "Add quest" : "Save"}
           </button>
+          )}
         </div>
       </form>
     </div>

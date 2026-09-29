@@ -38,7 +38,8 @@ export function DailySummary({ initialDay, goal, missedNotice, onClose }: Props)
       supabase.from("daily_bonuses").select("xp, streak").eq("day", toDateInput(day)).maybeSingle(),
     ]).then(([quests, bonus]) => {
       if (cancelled) return;
-      setData({ quests: (quests.data ?? []) as Quest[], bonus: bonus.data as Bonus });
+      const list = ((quests.data ?? []) as Quest[]).filter((q) => q.kind !== "deadline");
+      setData({ quests: list, bonus: bonus.data as Bonus });
     });
     return () => {
       cancelled = true;

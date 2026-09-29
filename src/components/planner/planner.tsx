@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import {
   CalendarArrowUp,
   CalendarDays,
+  CalendarOff,
   ListChecks,
   TriangleAlert,
   Check,
@@ -43,6 +44,8 @@ import { levelInfo } from "@/lib/levels";
 import {
   CATEGORIES,
   CATEGORY_KEYS,
+  isDeadline,
+  type CalendarLayer,
   type Category,
   type Profile,
   type Quest,
@@ -55,6 +58,7 @@ import { CalendarGrid } from "./calendar-grid";
 import { ContextMenu, type MenuItem } from "./context-menu";
 import { DailySummary, type MissedNotice } from "./daily-summary";
 import { MobileQuestList } from "./mobile-quest-list";
+import { CalendarLayers, syncLayer } from "./calendar-layers";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -89,6 +93,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [layers, setLayers] = useState<CalendarLayer[]>([]);
+  const [dueSoon, setDueSoon] = useState<Quest[]>([]);
+  const layerMap = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
   const [streak, setStreak] = useState<Streak>({ current: 0, best: 0, todayDone: false });
   const [summary, setSummary] = useState<{ day: Date; notice?: MissedNotice } | null>(null);
   const missedCheckDone = useRef(false);
@@ -131,17 +138,35 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   const refresh = useCallback(async () => {
     const today = startOfDay(new Date());
-    const [range, todays, active, latestBonus, bestBonus] = await Promise.all([
+    const [range, todays, active, latestBonus, bestBonus, calendars, deadlines] = await Promise.all([
       fetchRange(rangeStart, rangeEnd),
       fetchRange(today, addDays(today, 1)),
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
+      // Never load feed URLs into the page; the manage dialog fetches one only when needed.
+      supabase
+        .from("calendars")
+        .select("id, name, color, visible, last_synced_at, last_error")
+        .order("created_at"),
+      supabase
+        .from("quests")
+        .select("*")
+        .eq("kind", "deadline")
+        .gte("start_at", new Date().toISOString())
+        .lt("start_at", addDays(today, 15).toISOString())
+        .order("start_at")
+        .limit(6),
     ]);
+    const layerList = (calendars.data ?? []) as CalendarLayer[];
+    const hidden = new Set(layerList.filter((l) => !l.visible).map((l) => l.id));
+    const shown = (qs: Quest[]) => qs.filter((q) => !q.calendar_id || !hidden.has(q.calendar_id));
+    setLayers(layerList);
+    setDueSoon(shown((deadlines.data ?? []) as Quest[]));
     // Unfinished quests follow the latest scorer; finished ones keep the XP they were settled with.
     const rescored = new Map<string, Pick<Quest, "difficulty" | "xp">>();
     for (const q of [...range, ...todays]) {
-      if (rescored.has(q.id) || (q.status !== "planned" && q.status !== "active")) continue;
+      if (rescored.has(q.id) || isDeadline(q) || (q.status !== "planned" && q.status !== "active")) continue;
       const { rank, xp } = assessQuest({
         title: q.title,
         notes: q.notes,
@@ -156,8 +181,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       );
     }
     const withScores = (qs: Quest[]) => qs.map((q) => ({ ...q, ...rescored.get(q.id) }));
-    setQuests(withScores(range));
-    setTodayQuests(withScores(todays));
+    setQuests(shown(withScores(range)));
+    setTodayQuests(shown(withScores(todays)).filter((q) => !isDeadline(q)));
     setActiveQuest((active.data as Quest | null) ?? null);
 
     // The streak is alive if the goal was reached today or yesterday.
@@ -176,6 +201,21 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data for the visible range
     refresh();
   }, [refresh]);
+
+  // Once per visit: re-sync calendar layers not synced in the last 6 hours.
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (autoSynced.current || !layers.length) return;
+    autoSynced.current = true;
+    const stale = layers.filter(
+      (l) => !l.last_synced_at || Date.now() - new Date(l.last_synced_at).getTime() > 6 * 3_600_000,
+    );
+    if (!stale.length) return;
+    (async () => {
+      for (const l of stale) await syncLayer(l.id).catch(() => undefined);
+      refresh();
+    })();
+  }, [layers, refresh]);
 
   // Once per visit: fail quests left unfinished on previous days, then show yesterday's report.
   useEffect(() => {
@@ -247,7 +287,26 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       status: q.status,
       xp: q.xp,
       penalty: q.xp_penalty,
+      kind: q.kind,
+      source: q.calendar_id ? (layerMap.get(q.calendar_id)?.name ?? "a calendar") : undefined,
     });
+  }
+
+  /** Untick a class series: its upcoming events disappear and future syncs skip it. */
+  async function stopImporting(q: Quest) {
+    if (!q.calendar_id || !q.series_key) return;
+    await supabase
+      .from("calendar_series")
+      .update({ kept: false })
+      .eq("calendar_id", q.calendar_id)
+      .eq("series_key", q.series_key);
+    await supabase
+      .from("quests")
+      .delete()
+      .eq("calendar_id", q.calendar_id)
+      .eq("series_key", q.series_key)
+      .eq("status", "planned");
+    refresh();
   }
 
   async function save(d: QuestDraft) {
@@ -383,6 +442,31 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   function questMenuItems(q: Quest): MenuItem[] {
     const start = new Date(q.start_at);
     const finished = q.status === "completed" || q.status === "failed";
+    if (isDeadline(q)) return [{ label: "Open", icon: <Pencil />, onSelect: () => openEdit(q) }];
+    if (q.calendar_id) {
+      // Imported classes follow their feed: status actions only, plus dropping the whole series.
+      return [
+        { label: "Open", icon: <Pencil />, onSelect: () => openEdit(q) },
+        { separator: true },
+        ...(q.status === "planned"
+          ? [{ label: "Start", icon: <Play />, onSelect: () => runStatus(q.id, "active") }]
+          : []),
+        ...(!finished
+          ? [{ label: "Mark complete", icon: <Check />, onSelect: () => runStatus(q.id, "completed") }]
+          : [{ label: "Undo", icon: <RotateCcw />, onSelect: () => runStatus(q.id, "planned") }]),
+        ...(q.series_key && !q.series_key.startsWith("__")
+          ? [
+              { separator: true as const },
+              {
+                label: "Stop importing this class",
+                icon: <CalendarOff />,
+                danger: true,
+                onSelect: () => stopImporting(q),
+              },
+            ]
+          : []),
+      ];
+    }
     return [
       { label: "Open", icon: <Pencil />, onSelect: () => openEdit(q) },
       { separator: true },
@@ -562,6 +646,30 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
         <MiniCalendar selected={date} onSelect={(d) => setDate(startOfDay(d))} />
 
+        <CalendarLayers layers={layers} onChanged={refresh} />
+
+        {dueSoon.length > 0 && (
+          <div>
+            <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">Due soon</h3>
+            <ul className="mt-1 space-y-0.5">
+              {dueSoon.map((q) => (
+                <li key={q.id}>
+                  <button
+                    onClick={() => openEdit(q)}
+                    className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-xs hover:bg-surface-hover"
+                  >
+                    <Flag size={11} className="shrink-0" style={{ color: layerMap.get(q.calendar_id ?? "")?.color }} />
+                    <span className="flex-1 truncate">{q.title}</span>
+                    <span className="shrink-0 text-faint">
+                      {new Date(q.start_at).toLocaleDateString([], { weekday: "short", day: "numeric" })}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-y-auto">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">
             Today&apos;s quests
@@ -724,7 +832,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
         {isMobile && mobileTab === "quests" ? (
           <MobileQuestList
-            quests={quests}
+            quests={quests.filter((q) => !isDeadline(q))}
             onOpen={openEdit}
             onStatus={runStatus}
             onNew={() => openNew(nextHalfHour(date))}
@@ -738,6 +846,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             onReschedule={reschedule}
             onQuestMenu={(quest, x, y) => setMenu({ kind: "quest", quest, x, y })}
             onSlotMenu={(start, x, y) => setMenu({ kind: "slot", start, x, y })}
+            layers={layerMap}
           />
         )}
       </main>

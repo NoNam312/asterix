@@ -8,10 +8,10 @@ import {
   minutesIntoDay,
   startOfDay,
 } from "@/lib/dates";
-import { Check, X } from "lucide-react";
+import { CalendarDays, Check, Flag, X } from "lucide-react";
 import type { Rank } from "@/lib/difficulty";
 import { haptic } from "@/lib/haptics";
-import { CATEGORIES, type Quest } from "@/lib/quests";
+import { CATEGORIES, isDeadline, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
 
 const HOUR_HEIGHT = 52; // px per hour
@@ -29,6 +29,14 @@ type Props = {
   onReschedule: (quest: Quest, start: Date, durationMin: number) => void;
   onQuestMenu: (quest: Quest, x: number, y: number) => void;
   onSlotMenu: (start: Date, x: number, y: number) => void;
+  /** Subscribed calendar layers, for colouring imported events. */
+  layers: Map<string, CalendarLayer>;
+};
+
+/** All-day due dates are drawn under the date; they don't have a time. */
+const allDayDate = (q: Quest) => {
+  const d = new Date(q.start_at);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 };
 
 type Drag = {
@@ -50,6 +58,7 @@ export function CalendarGrid({
   onReschedule,
   onQuestMenu,
   onSlotMenu,
+  layers,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
@@ -130,6 +139,11 @@ export function CalendarGrid({
 
   function startDrag(e: React.PointerEvent, quest: Quest, mode: Drag["mode"]) {
     lastPointerRef.current = e.pointerType;
+    // Imported events follow their calendar feed, so they open on click instead of dragging.
+    if (quest.calendar_id) {
+      e.stopPropagation();
+      return;
+    }
     const colWidth = (columnsRef.current?.clientWidth ?? 1) / days.length;
     const base = { quest, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, colWidth };
 
@@ -185,6 +199,10 @@ export function CalendarGrid({
     onSlotMenu(slotAt(e, day), e.clientX, e.clientY);
   }
 
+  function layerColor(q: Quest) {
+    return (q.calendar_id && layers.get(q.calendar_id)?.color) || "#64748b";
+  }
+
   // Apply the in-progress drag so the block follows the pointer.
   const shown = quests.map((q) => {
     if (drag?.quest.id !== q.id) return q;
@@ -211,6 +229,20 @@ export function CalendarGrid({
               >
                 {day.getDate()}
               </div>
+              {quests
+                .filter((q) => isDeadline(q) && q.all_day && isSameDay(allDayDate(q), day))
+                .map((q) => (
+                  <button
+                    key={q.id}
+                    onClick={() => onEdit(q)}
+                    title={q.title}
+                    className="mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] font-medium"
+                    style={{ background: `${layerColor(q)}1f`, color: layerColor(q) }}
+                  >
+                    <Flag size={10} className="shrink-0" />
+                    <span className="truncate">{q.title}</span>
+                  </button>
+                ))}
             </div>
           );
         })}
@@ -233,7 +265,9 @@ export function CalendarGrid({
 
           <div ref={columnsRef} className={`flex flex-1 ${drag ? "cursor-grabbing select-none" : ""}`}>
             {days.map((day) => {
-              const dayQuests = shown.filter((q) => isSameDay(new Date(q.start_at), day));
+              const onDay = shown.filter((q) => isSameDay(new Date(q.start_at), day));
+              const dayQuests = onDay.filter((q) => !isDeadline(q));
+              const deadlines = onDay.filter((q) => isDeadline(q) && !q.all_day);
               const layout = layoutOverlaps(dayQuests);
               return (
                 <div
@@ -260,9 +294,29 @@ export function CalendarGrid({
                     </div>
                   )}
 
+                  {deadlines.map((q) => (
+                    <button
+                      key={q.id}
+                      onClick={() => onEdit(q)}
+                      title={`${q.title} · due ${formatTime(new Date(q.start_at))}`}
+                      className="absolute inset-x-0.5 z-20 flex -translate-y-1/2 items-center gap-1 truncate rounded border border-dashed bg-canvas px-1.5 py-0.5 text-left text-[11px] font-medium shadow-sm"
+                      style={{
+                        top: (minutesIntoDay(new Date(q.start_at)) / 60) * HOUR_HEIGHT,
+                        borderColor: layerColor(q),
+                        color: layerColor(q),
+                      }}
+                    >
+                      <Flag size={11} className="shrink-0" />
+                      <span className="truncate">{q.title}</span>
+                      <span className="ml-auto shrink-0 text-[10px] opacity-80">{formatTime(new Date(q.start_at))}</span>
+                    </button>
+                  ))}
+
                   {dayQuests.map((q) => (
                     <QuestBlock
                       key={q.id}
+                      layer={q.calendar_id ? layers.get(q.calendar_id) : undefined}
+                      onOpen={() => onEdit(q)}
                       quest={q}
                       col={layout.get(q.id)!}
                       dragging={drag?.quest.id === q.id}
@@ -288,6 +342,8 @@ export function CalendarGrid({
 
 function QuestBlock({
   quest,
+  layer,
+  onOpen,
   col,
   dragging,
   lifted,
@@ -295,6 +351,9 @@ function QuestBlock({
   onContextMenu,
 }: {
   quest: Quest;
+  /** Set for events imported from a calendar layer: drawn in the layer's colour. */
+  layer?: CalendarLayer;
+  onOpen: () => void;
   col: { index: number; count: number };
   dragging: boolean;
   lifted: boolean;
@@ -303,7 +362,7 @@ function QuestBlock({
 }) {
   const start = new Date(quest.start_at);
   const end = addMinutes(start, quest.duration_min);
-  const cat = CATEGORIES[quest.category];
+  const cat = layer ? { color: layer.color, soft: `${layer.color}1f` } : CATEGORIES[quest.category];
   const height = Math.max((quest.duration_min / 60) * HOUR_HEIGHT - 2, 18);
   const compact = height < 40;
   const done = quest.status === "completed";
@@ -313,6 +372,7 @@ function QuestBlock({
   return (
     <div
       onPointerDown={(e) => onPointerDown(e, "move")}
+      onClick={layer ? onOpen : undefined}
       onContextMenu={onContextMenu}
       className={`no-callout group absolute z-10 cursor-grab overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-xs transition-[box-shadow,transform] ${
         dragging ? "z-30 shadow-lg ring-1 ring-black/5" : "hover:shadow-md"
@@ -329,6 +389,7 @@ function QuestBlock({
     >
       <div className={`flex items-baseline gap-1.5 ${compact ? "" : "flex-col gap-0"}`}>
         <span className="flex min-w-0 items-center gap-1">
+          {layer && <CalendarDays size={11} className="shrink-0" style={{ color: layer.color }} />}
           {done && <Check size={12} className="shrink-0 text-xp" />}
           {failed && <X size={12} className="shrink-0 text-danger" />}
           {quest.difficulty && !done && !failed && <RankBadge rank={quest.difficulty as Rank} />}
