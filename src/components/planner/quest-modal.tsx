@@ -5,7 +5,7 @@ import { Check, Flag, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
-import { RankBadge } from "./rank-badge";
+import { ScorePanel } from "./score-panel";
 
 export type QuestDraft = {
   id?: string;
@@ -113,39 +113,21 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         />
 
         {draft.title.trim() && (
-          <div className="mt-3 flex items-start gap-3 rounded-lg bg-surface p-3">
-            <RankBadge rank={assessment.rank} size="lg" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">
-                Rank {assessment.rank} quest ·{" "}
-                {initial.status === "failed" ? (
-                  <span className="text-danger">
-                    −{initial.penalty ?? 0} XP
-                    <span className="ml-2 text-xs font-normal text-muted">(failed)</span>
-                  </span>
-                ) : (
-                  <span className="text-xp">
-                    +{finished && initial.xp !== undefined ? initial.xp : assessment.xp} XP
-                    {finished && <span className="ml-2 text-xs font-normal text-muted">(earned)</span>}
-                  </span>
-                )}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {assessment.reasons.map((r) => (
-                  <span
-                    key={r.label}
-                    className="rounded bg-canvas px-1.5 py-0.5 text-[11px] text-muted"
-                  >
-                    {r.label}{" "}
-                    <span className={r.points < 0 ? "text-danger" : "text-ink"}>
-                      {r.points > 0 ? "+" : ""}
-                      {r.points}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
+          <ScorePanel
+            assessment={assessment}
+            xpLabel={
+              initial.status === "failed" ? (
+                <span className="text-danger">
+                  −{initial.penalty ?? 0} XP <span className="text-xs font-normal text-muted">(failed)</span>
+                </span>
+              ) : (
+                <span className="text-xp">
+                  +{finished && initial.xp !== undefined ? initial.xp : assessment.xp} XP
+                  {finished && <span className="ml-1 text-xs font-normal text-muted">(earned)</span>}
+                </span>
+              )
+            }
+          />
         )}
 
         <div className="mt-4 flex flex-wrap gap-1.5">

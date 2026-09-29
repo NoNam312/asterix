@@ -56,7 +56,8 @@ export const TASK_TYPES: TaskType[] = [
   ] },
   { id: "study-session", label: "Study session", domain: "study", words: [
     "study", "revise", "revision", "learn", "memorise", "memorize", "go over", "catch up on", "catch up on lectures",
-    "study session", "study group", "self study", "content review",
+    "study session", "study group", "self study", "content review", "subject", "subjects", "unit", "topic",
+    "topics", "module", "course content", "coursework review",
   ] },
   { id: "light-study", label: "Reading and review", domain: "study", words: [
     "flashcards", "flashcard", "flash cards", "anki", "notes", "note taking", "make notes", "rewrite notes",

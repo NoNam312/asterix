@@ -222,23 +222,3 @@ export function extractFeatures(input: QuestInput): Features {
     suggestedCategory: domain ? DOMAIN_CATEGORY[domain] : undefined,
   };
 }
-
-/** Human-readable name for each feature, used in the "why this rank" breakdown. */
-export function featureLabel(name: string, f: Features, durationMin: number) {
-  if (name.startsWith("task:general-study")) return "Study task";
-  if (name.startsWith("task:")) return `${f.task!.type.label} ("${f.task!.phrase}")`;
-  if (name.startsWith("default:")) return "General task";
-  if (name.startsWith("area:")) return `${f.area!.area.name} ("${f.area!.phrase}")`;
-  if (name.startsWith("level:")) return f.level!.label;
-  if (name.startsWith("mod:")) {
-    const m = f.modifiers.find((mod) => `mod:${mod.id}` === name)!;
-    return `${m.label} ("${m.phrase}")`;
-  }
-  if (name === "multi") return "Several parts";
-  if (name.startsWith("duration:")) {
-    const h = Math.floor(durationMin / 60);
-    const m = durationMin % 60;
-    return `${h ? `${h}h` : ""}${m ? `${h ? " " : ""}${m}m` : ""} time limit`;
-  }
-  return name;
-}

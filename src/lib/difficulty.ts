@@ -1,7 +1,16 @@
 // Quest difficulty: the trained scorer lives in src/lib/scorer (see scripts/train-scorer.mjs).
 import type { Rank } from "./scorer/model.ts";
 
-export { assessQuest, type Assessment, type Rank, type Reason } from "./scorer/model.ts";
+export {
+  assessQuest,
+  difficultyWord,
+  RANK_THRESHOLDS,
+  type Assessment,
+  type Detected,
+  type FactorKind,
+  type Rank,
+  type Reason,
+} from "./scorer/model.ts";
 
 export const RANK_STYLES: Record<Rank, { color: string; soft: string }> = {
   E: { color: "#64748b", soft: "#eef1f5" },
