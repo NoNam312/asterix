@@ -39,6 +39,8 @@ alter table public.quests
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 create table if not exists private.app_secrets (name text primary key, value text not null);
+-- Extra lock: no policies, so only the database owner (the functions below) can read it.
+alter table private.app_secrets enable row level security;
 insert into private.app_secrets (name, value)
 values ('reminders', replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''))
 on conflict (name) do nothing;
