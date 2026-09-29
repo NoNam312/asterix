@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured, SUPABASE_KEY, SUPABASE_URL } from "./env";
 
 // /api/push/dispatch is called by the database scheduler (it checks its own secret).
-const PUBLIC_PATHS = ["/login", "/auth", "/api/push/dispatch"];
+// /lock and /api/lock are opened by iPhone Shortcuts (the private token in the link is the key).
+const PUBLIC_PATHS = ["/login", "/auth", "/api/push/dispatch", "/api/lock/", "/lock/"];
 
 /** Refreshes the auth session cookie and redirects signed-out users to /login. */
 export async function updateSession(request: NextRequest) {

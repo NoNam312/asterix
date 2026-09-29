@@ -21,6 +21,7 @@ export default async function SettingsPage() {
         allowed_urls: profile?.allowed_urls ?? [],
       }}
       email={auth.user.email ?? ""}
+      lockToken={profile?.lock_token ?? null}
       notificationPrefs={{
         notify_quests: profile?.notify_quests ?? true,
         notify_classes: profile?.notify_classes ?? true,

@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bell, Download, KeyRound, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ArrowLeft, Bell, Download, KeyRound, Smartphone, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
+import { IphoneLock } from "./iphone-lock";
 import { createClient } from "@/lib/supabase/client";
 
 type Settings = {
@@ -18,11 +19,13 @@ export function SettingsForm({
   email,
   needsMigration,
   notificationPrefs,
+  lockToken,
 }: {
   initial: Settings;
   email: string;
   needsMigration: boolean;
   notificationPrefs: NotificationPrefs;
+  lockToken: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [settings, setSettings] = useState(initial);
@@ -157,6 +160,14 @@ export function SettingsForm({
           To update the extension later, download it again, replace the folder, and click ↻ on its card
           in <code>chrome://extensions</code>.
         </p>
+      </Section>
+
+      <Section id="iphone-lock" icon={<Smartphone size={16} />} title="iPhone app lock">
+        <p className="mb-3 text-sm text-muted">
+          Make YouTube, Instagram and other apps open a QuestLog lock page until you reach your daily goal, using an
+          iPhone Shortcuts automation.
+        </p>
+        <IphoneLock initialToken={lockToken} />
       </Section>
 
       <Section icon={<KeyRound size={16} />} title="Change password">
