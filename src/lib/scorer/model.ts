@@ -24,6 +24,8 @@ export type Assessment = {
   reasons: Reason[];
   /** Set when the title mixes signals, e.g. a study subject in a gym quest. */
   warning?: string;
+  /** Set when the title is too vague to score fairly. */
+  tip?: string;
   /** Category the quest most likely belongs to (e.g. "leg day" -> gym). */
   suggestedCategory?: Category;
 };
@@ -165,5 +167,11 @@ export function assessQuest(input: QuestInput): Assessment {
       ? `“${f.ignoredSubject.phrase}” looks like a study subject, but “${f.task.phrase}” is a ${kind} task, so this is scored as ${kind}. Split it into two quests if you meant both.`
       : undefined;
 
-  return { score, rank: rankFor(score), xp, detected, reasons, warning, suggestedCategory: f.suggestedCategory };
+  const tip = f.task
+    ? undefined
+    : f.x["task:general-study"]
+      ? "Say what you're doing (lecture, tute, assignment, revision…). Vague quests get the lowest study rate."
+      : "Add what kind of task this is for a fairer score. Vague quests get the lowest rate.";
+
+  return { score, rank: rankFor(score), xp, detected, reasons, warning, tip, suggestedCategory: f.suggestedCategory };
 }

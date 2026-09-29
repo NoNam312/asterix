@@ -39,14 +39,23 @@ export type Tokens = {
   content: string[];
   /** Original lowercase words (for codes and numbers) */
   raw: string[];
+  /** Words written in capitals, lowercased: "IT assignment" -> it */
+  upper: Set<string>;
 };
 
 export function tokenize(text: string): Tokens {
   const raw = words(text);
+  const upper = new Set(
+    text
+      .split(/[^A-Za-z0-9]+/)
+      .filter((w) => /^[A-Z][A-Z0-9]{1,5}$/.test(w))
+      .map((w) => w.toLowerCase()),
+  );
   return {
     raw,
     all: raw.map(stem),
     content: raw.filter((w) => !STOPWORDS.has(w)).map(stem),
+    upper,
   };
 }
 

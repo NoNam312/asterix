@@ -2,7 +2,7 @@
 // modifier words and duration. Used by the app (model.ts) and the trainer (scripts/train-scorer.mjs).
 
 import type { Category } from "../quests.ts";
-import { AREAS, CODE_PREFIXES, type Area } from "./areas.ts";
+import { AREAS, CODE_PREFIXES, EVERYDAY_WORD_ABBREVIATIONS, type Area } from "./areas.ts";
 import {
   DOMAIN_CATEGORY,
   LEVEL_WORDS,
@@ -44,6 +44,19 @@ const areaPhrases = AREAS.flatMap((area) => area.terms.map((t) => ({ area, p: ph
 const modifierPhrases = MODIFIERS.map((m) => ({ ...m, phrases: m.words.map(phrase) }));
 const levelPhrases = LEVEL_WORDS.flatMap((l) => l.words.map((w) => ({ ...l, p: phrase(w) })));
 const areaById = new Map(AREAS.map((a) => [a.id, a]));
+const abbreviations = new Map(AREAS.flatMap((a) => (a.abbreviations ?? []).map((w) => [w, a] as const)));
+
+/** An abbreviation in the quest, if the context makes it believable (see Area.abbreviations). */
+function findAbbreviation(tokens: Tokens, studySignals: boolean) {
+  if (!studySignals) return undefined;
+  for (const word of tokens.raw) {
+    const area = abbreviations.get(word);
+    if (!area) continue;
+    if (EVERYDAY_WORD_ABBREVIATIONS.has(word) && !tokens.upper.has(word)) continue;
+    return { area, phrase: word.toUpperCase() };
+  }
+  return undefined;
+}
 
 registerVocabulary(
   [...taskPhrases, ...areaPhrases, ...levelPhrases].flatMap((e) => e.p.stems)
@@ -108,7 +121,7 @@ function mask(tokens: Tokens, p: Phrase): Tokens {
     }
     return list;
   };
-  return { raw: tokens.raw, all: hide(tokens.all), content: hide(tokens.content) };
+  return { raw: tokens.raw, all: hide(tokens.all), content: hide(tokens.content), upper: tokens.upper };
 }
 
 /** Course codes: COMP30026, CS 101, MATH-2250, csc148. Returns level and a hinted area. */
@@ -167,6 +180,12 @@ export function extractFeatures(input: QuestInput): Features {
   let level: Features["level"];
   if (levelHit) level = { value: levelHit.level, label: levelHit.label };
   else if (code) level = { value: code.level, label: `Course code ${code.code}` };
+
+  // Abbreviations (MOC, IT, PE) only count when something else says this is study.
+  if (!area) {
+    const studySignals = taskHit?.type.domain === "study" || !!level || !!code || input.category === "study";
+    area = findAbbreviation(titleTokens, studySignals) ?? findAbbreviation(notesTokens, studySignals);
+  }
 
   const studyContext = !!area || !!level || !!code;
 

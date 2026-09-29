@@ -5,6 +5,7 @@ import { writeFileSync } from "node:fs";
 import { EXAMPLES } from "../src/lib/scorer/training-data.ts";
 import { extractFeatures } from "../src/lib/scorer/features.ts";
 import { rankFor } from "../src/lib/scorer/model.ts";
+import { DOMAIN_CATEGORY, TASK_TYPES } from "../src/lib/scorer/lexicon.ts";
 
 const RANKS = ["E", "D", "C", "B", "A", "S"];
 const rows = EXAMPLES.map(([title, category, minutes, score]) => ({
@@ -34,16 +35,18 @@ function solve(A, b) {
   return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[n] / row[i]));
 }
 
-function fit(data, lambda) {
-  const names = [...new Set(data.flatMap((r) => Object.keys(r.f.x)))].sort();
+function fit(data, lambda, fixed = {}) {
+  const names = [...new Set(data.flatMap((r) => Object.keys(r.f.x)))].filter((n) => !(n in fixed)).sort();
   const idx = new Map(names.map((n, i) => [n, i]));
   const p = names.length;
   const A = Array.from({ length: p }, () => new Array(p).fill(0));
   const b = new Array(p).fill(0);
   for (const r of data) {
-    const entries = Object.entries(r.f.x).map(([n, v]) => [idx.get(n), v]);
+    // Features with a fixed weight are moved to the target side.
+    const y = r.y - Object.entries(r.f.x).reduce((s, [n, v]) => s + (fixed[n] ?? 0) * v, 0);
+    const entries = Object.entries(r.f.x).filter(([n]) => !(n in fixed)).map(([n, v]) => [idx.get(n), v]);
     for (const [i, vi] of entries) {
-      b[i] += vi * r.y;
+      b[i] += vi * y;
       for (const [j, vj] of entries) A[i][j] += vi * vj;
     }
   }
@@ -51,7 +54,61 @@ function fit(data, lambda) {
     if (n !== "bias") A[i][i] += lambda; // don't shrink the intercept
   });
   const w = solve(A, b);
-  return Object.fromEntries(names.map((n, i) => [n, w[i]]));
+  return { ...Object.fromEntries(names.map((n, i) => [n, w[i]])), ...fixed };
+}
+
+// ---------- fairness rules ----------
+// A vague quest must never score above the easiest specific quest of the same kind, otherwise
+// leaving detail out ("Models of Computation" vs "Models of Computation lecture") earns more XP.
+const CAPS = [
+  ["task:general-study", TASK_TYPES.filter((t) => t.domain === "study").map((t) => `task:${t.id}`)],
+  ...["study", "gym", "chores", "personal", "other"].map((cat) => [
+    `default:${cat}`,
+    TASK_TYPES.filter((t) => DOMAIN_CATEGORY[t.domain] === cat).map((t) => `task:${t.id}`),
+  ]),
+];
+
+/** Moves each vague feature's value onto the specific feature it is tied to. */
+function retie(x, ties) {
+  const out = { ...x };
+  for (const [vague, specific] of Object.entries(ties)) {
+    if (!(vague in out)) continue;
+    out[specific] = (out[specific] ?? 0) + out[vague];
+    delete out[vague];
+  }
+  return out;
+}
+
+/**
+ * Ridge fit where any vague feature scoring above the lowest specific feature of its kind is
+ * tied to it (they share one weight), then refit until no rule is broken.
+ */
+function fitFair(data, lambda) {
+  const ties = {};
+  let w;
+  for (let round = 0; round < 20; round++) {
+    w = fit(data.map((r) => ({ ...r, f: { ...r.f, x: retie(r.f.x, ties) } })), lambda);
+    for (const [vague, specific] of Object.entries(ties)) w[vague] = w[specific] ?? 0;
+    let changed = false;
+    for (const [feature, group] of CAPS) {
+      const present = group.filter((g) => g in w);
+      if (!(feature in w) || !present.length) continue;
+      const lowest = present.reduce((a, b) => (w[a] <= w[b] ? a : b));
+      if (w[feature] > w[lowest] + 1e-6) {
+        ties[feature] = lowest;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  // If ties still disagree (two near-equal lowest types), lower the vague weight to the cap.
+  // Also covers vague features with no training examples (they would otherwise default to 0).
+  // This only ever makes vague quests score less.
+  for (const [feature, group] of CAPS) {
+    const present = group.filter((g) => g in w);
+    if (present.length) w[feature] = Math.min(w[feature] ?? 0, ...present.map((g) => w[g]));
+  }
+  return w;
 }
 
 const predict = (w, x) => Object.entries(x).reduce((s, [n, v]) => s + (w[n] ?? 0) * v, 0);
@@ -82,7 +139,7 @@ let best = { lambda: 1, mae: Infinity };
 for (const lambda of [0.1, 0.3, 1, 3, 10, 30]) {
   let total = 0;
   for (let k = 0; k < 5; k++) {
-    const w = fit(train.filter((_, i) => i % 5 !== k), lambda);
+    const w = fitFair(train.filter((_, i) => i % 5 !== k), lambda);
     total += evaluate(w, train.filter((_, i) => i % 5 === k)).mae;
   }
   if (total / 5 < best.mae) best = { lambda, mae: total / 5 };
@@ -91,7 +148,7 @@ for (const lambda of [0.1, 0.3, 1, 3, 10, 30]) {
 // ---------- honest report on held-out examples ----------
 
 const pct = (v) => `${Math.round(v * 100)}%`;
-const wTrain = fit(train, best.lambda);
+const wTrain = fitFair(train, best.lambda);
 const trainEval = evaluate(wTrain, train);
 const testEval = evaluate(wTrain, test);
 
@@ -115,7 +172,11 @@ if (clueless.length) {
 
 // ---------- final weights on all examples ----------
 
-const wAll = fit(rows, best.lambda);
+const wAll = fitFair(rows, best.lambda);
+for (const [feature, group] of CAPS) {
+  const cap = Math.min(...group.filter((g) => g in wAll).map((g) => wAll[g]));
+  if (!(feature in wAll) || wAll[feature] > cap + 1e-6) throw new Error(`Fairness rule broken: ${feature}`);
+}
 const allEval = evaluate(wAll, rows);
 console.log(`\nFinal model (all ${rows.length} examples): avg error ${allEval.mae.toFixed(1)} pts, exact rank ${pct(allEval.exact)}`);
 

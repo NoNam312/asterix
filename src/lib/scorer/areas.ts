@@ -3,7 +3,20 @@
 // Difficulty values are general estimates of how demanding each area usually is, not facts
 // about any particular course. Add areas or words freely; run `npm run scorer:train` afterwards.
 
-export type Area = { id: string; name: string; difficulty: number; terms: string[] };
+export type Area = {
+  id: string;
+  name: string;
+  difficulty: number;
+  terms: string[];
+  /**
+   * Short forms (MOC, ML, PE, IT). They can mean other things, so they only count when the quest
+   * is clearly about studying; everyday words (IT, PE, SAT, ACT) must also be written in capitals.
+   */
+  abbreviations?: string[];
+};
+
+/** Abbreviations that are also ordinary words, so they must be written in capitals to count. */
+export const EVERYDAY_WORD_ABBREVIATIONS = new Set(["it", "pe", "act", "sat"]);
 
 export const AREAS: Area[] = [
   // ---------- Mathematics ----------
@@ -84,20 +97,19 @@ export const AREAS: Area[] = [
   ] },
   { id: "algorithms", name: "Algorithms and data structures", difficulty: 4, terms: [
     "algorithms", "algorithm", "data structures", "data structure", "sorting", "sorting algorithms", "binary search",
-    "linked list", "linked lists", "hash table", "hash tables", "hashing", "heaps", "binary tree", "binary trees",
-    "bst", "dijkstra", "dynamic programming", "recursion", "big o", "time complexity", "greedy algorithms", "bfs", "dfs",
+    "linked list", "linked lists", "hash table", "hash tables", "hashing", "heaps", "binary tree", "binary trees", "dijkstra", "dynamic programming", "recursion", "big o", "time complexity", "greedy algorithms",
     "minimum spanning tree", "leetcode", "graph algorithms", "design of algorithms", "algorithms and data structures",
-  ] },
+  ], abbreviations: ["bst", "bfs", "dfs"] },
   { id: "theory-computation", name: "Theory of computation", difficulty: 5, terms: [
-    "models of computation", "theory of computation", "automata", "automaton", "dfa", "nfa", "finite automata",
-    "regular expressions", "regular languages", "context free grammar", "context free grammars", "cfg",
+    "models of computation", "theory of computation", "automata", "automaton", "finite automata",
+    "regular expressions", "regular languages", "context free grammar", "context free grammars",
     "pushdown automata", "turing machine", "turing machines", "pumping lemma", "decidability", "undecidable",
     "halting problem", "np complete", "np completeness", "complexity theory", "formal languages", "computability",
-    "lambda calculus", "moc", "toc",
-  ] },
+    "lambda calculus",
+  ], abbreviations: ["moc", "toc", "cfg", "dfa", "nfa"] },
   { id: "functional-programming", name: "Functional and logic programming", difficulty: 4, terms: [
     "haskell", "functional programming", "ocaml", "lisp", "scheme", "prolog", "declarative programming", "monads",
-    "elm", "f sharp",
+    "f sharp",
   ] },
   { id: "computer-systems", name: "Computer systems", difficulty: 4.5, terms: [
     "operating systems", "computer systems", "concurrency", "multithreading", "threads", "processes",
@@ -126,19 +138,18 @@ export const AREAS: Area[] = [
     "it project", "software project", "code review",
   ] },
   { id: "ai-ml", name: "AI and machine learning", difficulty: 4.5, terms: [
-    "machine learning", "ml", "artificial intelligence", "ai", "neural network", "neural networks", "deep learning",
-    "gradient descent", "backpropagation", "classification", "clustering", "reinforcement learning", "nlp",
-    "natural language processing", "computer vision", "pytorch", "tensorflow", "transformers", "llm", "llms",
+    "machine learning", "artificial intelligence", "neural network", "neural networks", "deep learning",
+    "gradient descent", "backpropagation", "classification", "clustering", "reinforcement learning",
+    "natural language processing", "computer vision", "pytorch", "tensorflow", "transformers",
     "kaggle",
-  ] },
+  ], abbreviations: ["ml", "ai", "nlp", "llm", "llms"] },
   { id: "graphics", name: "Computer graphics", difficulty: 4, terms: [
     "computer graphics", "graphics", "graphics and interaction", "shaders", "shader", "rendering", "opengl",
     "unity", "unreal", "ray tracing", "game development", "game dev", "godot", "blender",
   ] },
   { id: "security", name: "Cyber security", difficulty: 4, terms: [
-    "cyber security", "cybersecurity", "security", "cryptography", "encryption", "penetration testing", "pentesting",
-    "ctf", "vulnerabilities", "hack the box", "tryhackme",
-  ] },
+    "cyber security", "cybersecurity", "security", "cryptography", "encryption", "penetration testing", "pentesting", "vulnerabilities", "hack the box", "tryhackme",
+  ], abbreviations: ["ctf"] },
   { id: "compilers", name: "Compilers and programming languages", difficulty: 5, terms: [
     "compilers", "compiler", "parsing", "lexer", "code generation", "type checking", "type systems",
     "programming language theory", "interpreters",
@@ -148,13 +159,13 @@ export const AREAS: Area[] = [
     "tableau", "power bi", "r programming", "rstudio", "jupyter", "data wrangling", "elements of data processing",
   ] },
   { id: "hci", name: "HCI and UX", difficulty: 2.5, terms: [
-    "hci", "human computer interaction", "user experience", "ux", "ux research", "ui design", "usability",
+    "human computer interaction", "user experience", "ux research", "ui design", "usability",
     "user research", "personas", "prototyping", "user testing",
-  ] },
+  ], abbreviations: ["hci", "ux"] },
   { id: "information-systems", name: "Information systems", difficulty: 2.5, terms: [
     "information systems", "business analysis", "requirements analysis", "systems analysis", "digital technologies",
-    "digital tech", "ict", "information technology", "computing",
-  ] },
+    "digital tech", "information technology", "computing",
+  ], abbreviations: ["ict", "it"] },
 
   // ---------- Physics ----------
   { id: "physics", name: "Physics", difficulty: 3.5, terms: [
@@ -227,9 +238,8 @@ export const AREAS: Area[] = [
     "psychology", "psych", "cognitive psychology", "developmental psychology", "social psychology", "research methods",
     "abnormal psychology", "behaviourism", "behaviorism", "psych experiment", "ap psych",
   ] },
-  { id: "physical-education", name: "PE and health", difficulty: 2, terms: [
-    "pe", "physical education", "health and pe", "hpe", "pdhpe", "sport and recreation", "health class",
-  ] },
+  { id: "physical-education", name: "PE and health", difficulty: 2, terms: [ "physical education", "health and pe", "sport and recreation", "health class",
+  ], abbreviations: ["pe", "hpe", "pdhpe"] },
   { id: "sport-science", name: "Sport and exercise science", difficulty: 3.5, terms: [
     "sport science", "exercise science", "exercise physiology", "biomechanics", "kinesiology",
   ] },
@@ -303,8 +313,8 @@ export const AREAS: Area[] = [
   ] },
   { id: "philosophy", name: "Philosophy", difficulty: 3.5, terms: [
     "philosophy", "ethics", "epistemology", "metaphysics", "kant", "plato", "aristotle", "descartes",
-    "utilitarianism", "existentialism", "tok", "theory of knowledge", "critical thinking",
-  ] },
+    "utilitarianism", "existentialism", "theory of knowledge", "critical thinking",
+  ], abbreviations: ["tok"] },
   { id: "politics", name: "Politics and international relations", difficulty: 3, terms: [
     "politics", "political science", "government", "international relations", "public policy", "civics",
     "democracy", "global politics", "ap gov",
@@ -326,9 +336,9 @@ export const AREAS: Area[] = [
     "french", "spanish", "german", "italian", "japanese", "chinese", "mandarin", "cantonese", "korean", "arabic",
     "hindi", "indonesian", "vietnamese", "russian", "portuguese", "vocab", "vocabulary", "grammar", "conjugation",
     "conjugations", "verb tables", "kanji", "hiragana", "katakana", "duolingo", "speaking practice",
-    "listening practice", "jlpt", "hsk", "dele",
-  ] },
-  { id: "english-language-tests", name: "English language tests", difficulty: 2.5, terms: ["esl", "eal", "ielts", "toefl", "pte"] },
+    "listening practice",
+  ], abbreviations: ["jlpt", "hsk", "dele"] },
+  { id: "english-language-tests", name: "English language tests", difficulty: 2.5, terms: ["ielts", "toefl"], abbreviations: ["esl", "eal", "pte"] },
 
   // ---------- Arts and design ----------
   { id: "music", name: "Music", difficulty: 3, terms: [
@@ -343,18 +353,16 @@ export const AREAS: Area[] = [
     "media production",
   ] },
   { id: "design", name: "Design", difficulty: 3, terms: [
-    "graphic design", "typography", "branding", "product design", "visual communication", "visual communication design",
-    "vcd", "industrial design", "fashion design",
-  ] },
+    "graphic design", "typography", "branding", "product design", "visual communication", "visual communication design", "industrial design", "fashion design",
+  ], abbreviations: ["vcd"] },
   { id: "architecture", name: "Architecture", difficulty: 4, terms: ["architecture", "architectural", "design studio", "building design"] },
   { id: "technology-school", name: "Technology and applied studies", difficulty: 2, terms: [
     "food technology", "food tech", "home economics", "textiles", "woodwork", "metalwork", "design and technology",
   ] },
 
   // ---------- Entrance and admissions tests ----------
-  { id: "entrance-tests", name: "Entrance tests", difficulty: 3.5, terms: [
-    "sat", "act", "gre", "gmat", "lsat", "ucat", "ukcat", "gamsat", "mcat", "psat", "selective school test",
-  ] },
+  { id: "entrance-tests", name: "Entrance tests", difficulty: 3.5, terms: [ "selective school test",
+  ], abbreviations: ["sat", "act", "gre", "gmat", "lsat", "ucat", "ukcat", "gamsat", "mcat", "psat"] },
 ];
 
 /** Course-code prefixes (e.g. COMP30026, CS 101, MATH2250) and the area they suggest. */

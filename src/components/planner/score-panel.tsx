@@ -69,6 +69,10 @@ export function ScorePanel({ assessment, xpLabel }: { assessment: Assessment; xp
         </p>
       )}
 
+      {assessment.tip && !assessment.warning && (
+        <p className="mt-2 text-[11px] text-muted">💡 {assessment.tip}</p>
+      )}
+
       {reasons.length > 0 && (
         <>
           <button
