@@ -70,12 +70,16 @@ export function IphoneLock({ initialToken }: { initialToken: string | null }) {
           Add <strong className="text-ink">Get Contents of URL</strong> and paste your <strong className="text-ink">status link</strong>.
         </li>
         <li>
-          Add <strong className="text-ink">If</strong>: <em>Contents of URL</em> <strong className="text-ink">is</strong>{" "}
+          Add <strong className="text-ink">Get Text from Input</strong> (it should say <em>Get text from Contents of URL</em>).
+          Without it, iPhone treats the answer as a file and the next step won&apos;t offer “is”.
+        </li>
+        <li>
+          Add <strong className="text-ink">If</strong>: <em>Text</em> <strong className="text-ink">is</strong>{" "}
           <code className="rounded bg-canvas px-1 text-ink">LOCKED</code>.
         </li>
         <li>
-          Inside the If, add <strong className="text-ink">Open URLs</strong> and paste your{" "}
-          <strong className="text-ink">lock page link</strong>. Tap <strong className="text-ink">Done</strong>.
+          Add <strong className="text-ink">Open URLs</strong>, drag it up between <em>If</em> and <em>Otherwise</em>, and
+          paste your <strong className="text-ink">lock page link</strong>. Tap <strong className="text-ink">Done</strong>.
         </li>
       </ol>
       <p className="text-xs text-faint">
