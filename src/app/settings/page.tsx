@@ -19,6 +19,7 @@ export default async function SettingsPage() {
         daily_xp_goal: profile?.daily_xp_goal ?? 300,
         blocked_sites: profile?.blocked_sites ?? [],
         allowed_urls: profile?.allowed_urls ?? [],
+        lock_mode: profile?.lock_mode ?? "during_quests",
       }}
       email={auth.user.email ?? ""}
       lockToken={profile?.lock_token ?? null}

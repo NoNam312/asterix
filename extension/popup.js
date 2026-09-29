@@ -22,12 +22,17 @@ function render({ email, status }) {
   const until = status.unlocked_until ? new Date(status.unlocked_until) : null;
   if (status.goal_reached) {
     $("message").textContent = "Daily goal reached. All sites are unlocked for today 🎉";
-  } else if (status.quests_left === 0) {
-    $("message").textContent = "No quests left today, so sites are unlocked. Plan a quest to lock them again.";
+  } else if (status.schedule_free) {
+    $("message").textContent =
+      status.lock_mode === "during_quests"
+        ? "No quest right now, so sites are unlocked. They lock again when your next quest starts."
+        : "No quests left today, so sites are unlocked.";
   } else if (until && until > new Date()) {
     $("message").textContent = `Emergency unlock until ${until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
   } else {
-    $("message").textContent = `Earn ${status.goal - status.earned} more XP to unlock ${status.blocked_sites.length} blocked sites.`;
+    $("message").textContent = status.current_quest
+      ? `Locked during “${status.current_quest}”. Earn ${status.goal - status.earned} more XP to unlock for the day.`
+      : `Earn ${status.goal - status.earned} more XP to unlock ${status.blocked_sites.length} blocked sites.`;
   }
 
   $("emergency").classList.toggle("hidden", !locked);

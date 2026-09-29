@@ -551,16 +551,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     .reduce((sum, q) => sum + q.xp, 0);
   const lvl = levelInfo(profile.total_xp);
   const emergencyUntil = profile.unlocked_until ? new Date(profile.unlocked_until) : null;
-  // Same rule as the extension and iPhone lock (supabase/010): locked only while quests remain today.
-  const questsLeft = todayQuests.filter(
+  // Same rule as the extension and iPhone lock (supabase/011_lock_modes.sql).
+  const lockMode = profile.lock_mode ?? "during_quests";
+  const unfinished = todayQuests.filter((q) => q.status === "planned" || q.status === "active");
+  const questsLeft = unfinished.filter((q) => new Date(q.start_at).getTime() + q.duration_min * 60_000 > Date.now()).length;
+  const questNow = unfinished.find(
     (q) =>
-      (q.status === "planned" || q.status === "active") &&
-      new Date(q.start_at).getTime() + q.duration_min * 60_000 > Date.now(),
-  ).length;
+      q.status === "active" ||
+      (Date.now() >= new Date(q.start_at).getTime() && Date.now() < new Date(q.start_at).getTime() + q.duration_min * 60_000),
+  );
+  const scheduleFree =
+    lockMode === "during_quests" ? !questNow : lockMode === "until_done" ? questsLeft === 0 : false;
   const sitesUnlocked =
-    earnedToday >= profile.daily_xp_goal ||
-    questsLeft === 0 ||
-    (emergencyUntil !== null && emergencyUntil > new Date());
+    earnedToday >= profile.daily_xp_goal || scheduleFree || (emergencyUntil !== null && emergencyUntil > new Date());
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -633,10 +636,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               {sitesUnlocked
                 ? earnedToday >= profile.daily_xp_goal
                   ? "Goal reached. Enjoy your break!"
-                  : questsLeft === 0
-                    ? "No quests left today"
+                  : scheduleFree
+                    ? lockMode === "during_quests"
+                      ? "No quest right now"
+                      : "No quests left today"
                     : `Emergency unlock until ${formatTime(emergencyUntil!)}`
-                : `${profile.daily_xp_goal - earnedToday} XP or ${questsLeft} quest${questsLeft === 1 ? "" : "s"} left today`}
+                : questNow
+                  ? `During “${questNow.title}”`
+                  : `${profile.daily_xp_goal - earnedToday} XP to unlock today`}
             </span>
           </span>
         </Link>

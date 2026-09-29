@@ -7,9 +7,29 @@ import { ChangePasswordForm } from "@/components/change-password-form";
 import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
 import { IphoneLock } from "./iphone-lock";
 import { createClient } from "@/lib/supabase/client";
+import type { LockMode } from "@/lib/quests";
+
+const LOCK_MODES: { value: LockMode; title: string; description: string }[] = [
+  {
+    value: "during_quests",
+    title: "Only during quests",
+    description: "Apps lock while a quest or class is happening. Between quests and at night they're free.",
+  },
+  {
+    value: "until_done",
+    title: "Until today's quests are done",
+    description: "Apps stay locked while you still have quests left today, and unlock after the last one ends.",
+  },
+  {
+    value: "all_day",
+    title: "All day until the goal",
+    description: "Strict: apps stay locked all day until you reach your daily XP goal.",
+  },
+];
 
 type Settings = {
   daily_xp_goal: number;
+  lock_mode: LockMode;
   blocked_sites: string[];
   allowed_urls: string[];
 };
@@ -90,9 +110,38 @@ export function SettingsForm({
         </p>
       </Section>
 
+      <Section icon={<Lock size={16} />} title="When should QuestLog lock apps?">
+        <p className="text-sm text-muted">
+          Applies to the Chrome extension and the iPhone lock. Reaching your daily goal or an emergency unlock always unlocks
+          everything.
+        </p>
+        <div className="mt-3 space-y-2">
+          {LOCK_MODES.map((m) => (
+            <label
+              key={m.value}
+              className={`flex cursor-pointer gap-3 rounded-lg border px-3 py-2.5 transition ${
+                settings.lock_mode === m.value ? "border-accent bg-accent-soft/50" : "border-line hover:bg-surface"
+              }`}
+            >
+              <input
+                type="radio"
+                name="lock_mode"
+                checked={settings.lock_mode === m.value}
+                onChange={() => setSettings((s) => ({ ...s, lock_mode: m.value }))}
+                className="mt-1 accent-[var(--color-accent)]"
+              />
+              <span>
+                <span className="block text-sm font-medium">{m.title}</span>
+                <span className="block text-xs text-muted">{m.description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </Section>
+
       <Section icon={<Lock size={16} />} title="Blocked sites">
         <p className="text-sm text-muted">
-          Locked until you reach your daily goal. Subdomains are included (blocking youtube.com also
+          Locked according to the setting above. Subdomains are included (blocking youtube.com also
           blocks m.youtube.com).
         </p>
         <ListEditor

@@ -34,8 +34,10 @@ function render(status) {
   $("goal").textContent = status.goal;
   $("bar").style.width = `${Math.min(100, (status.earned / status.goal) * 100)}%`;
   $("left").textContent = locked
-    ? `${status.goal - status.earned} XP to go, or finish your ${status.quests_left} remaining quest${status.quests_left === 1 ? "" : "s"} today.`
-    : "Goal reached!";
+    ? status.current_quest
+      ? `You're in “${status.current_quest}” right now. ${status.goal - status.earned} XP to go today.`
+      : `${status.goal - status.earned} XP to go today.`
+    : "You're free right now.";
   $("emergency").textContent = `Emergency unlock: −${status.emergency_cost} XP for ${status.emergency_minutes} min`;
   $("emergency").classList.toggle("hidden", !locked);
 
@@ -49,8 +51,8 @@ function render(status) {
     $("pill").className = "pill unlocked";
     $("pill").textContent = "🔓 Unlocked";
     $("subtitle").textContent =
-      status.quests_left === 0 && !status.goal_reached
-        ? "No quests left today, so you're free."
+      status.schedule_free && !status.goal_reached
+        ? "No quest right now, so you're free."
         : "Nice work. You've earned your break.";
     if (target) {
       $("continue").href = target;

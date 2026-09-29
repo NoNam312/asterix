@@ -46,7 +46,11 @@ export type Profile = {
   blocked_sites?: string[];
   /** End of an emergency unlock bought in the extension. */
   unlocked_until?: string | null;
+  /** When apps are locked (see supabase/011_lock_modes.sql). */
+  lock_mode?: LockMode;
 };
+
+export type LockMode = "during_quests" | "until_done" | "all_day";
 
 /** Cool-toned palette so categories stay distinguishable on a gray/white UI. */
 export const CATEGORIES: Record<Category, { label: string; color: string; soft: string }> = {

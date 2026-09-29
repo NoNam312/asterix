@@ -7,6 +7,10 @@ export type LockStatus = {
   goal: number;
   earned: number;
   quests_left: number;
+  lock_mode: "during_quests" | "until_done" | "all_day";
+  current_quest: string | null;
+  schedule_free: boolean;
+  goal_reached: boolean;
   unlocked: boolean;
   unlocked_until: string | null;
 };
