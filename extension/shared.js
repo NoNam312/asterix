@@ -14,10 +14,14 @@ function hostMatches(host, domain) {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
-/** Locked unless today's goal is reached or an emergency unlock is running. */
+/**
+ * Locked unless today's goal is reached, an emergency unlock is running, or there are no
+ * unfinished quests left today (nothing planned, or everything planned has ended).
+ */
 export function isLocked(status) {
   const checkedToday =
     status.checked_at && new Date(status.checked_at).toDateString() === new Date().toDateString();
+  if (checkedToday && status.quests_left === 0) return false;
   const goalReached = checkedToday && status.goal_reached;
   const emergency = status.unlocked_until && new Date(status.unlocked_until).getTime() > Date.now();
   return !goalReached && !emergency;

@@ -22,6 +22,8 @@ function render({ email, status }) {
   const until = status.unlocked_until ? new Date(status.unlocked_until) : null;
   if (status.goal_reached) {
     $("message").textContent = "Daily goal reached. All sites are unlocked for today 🎉";
+  } else if (status.quests_left === 0) {
+    $("message").textContent = "No quests left today, so sites are unlocked. Plan a quest to lock them again.";
   } else if (until && until > new Date()) {
     $("message").textContent = `Emergency unlock until ${until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
   } else {

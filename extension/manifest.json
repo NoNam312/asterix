@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "QuestLog Focus Lock",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Blocks distracting sites until you reach your daily XP goal in QuestLog.",
   "icons": {
     "16": "icons/icon-16.png",

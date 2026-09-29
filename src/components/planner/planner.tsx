@@ -551,8 +551,16 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     .reduce((sum, q) => sum + q.xp, 0);
   const lvl = levelInfo(profile.total_xp);
   const emergencyUntil = profile.unlocked_until ? new Date(profile.unlocked_until) : null;
+  // Same rule as the extension and iPhone lock (supabase/010): locked only while quests remain today.
+  const questsLeft = todayQuests.filter(
+    (q) =>
+      (q.status === "planned" || q.status === "active") &&
+      new Date(q.start_at).getTime() + q.duration_min * 60_000 > Date.now(),
+  ).length;
   const sitesUnlocked =
-    earnedToday >= profile.daily_xp_goal || (emergencyUntil !== null && emergencyUntil > new Date());
+    earnedToday >= profile.daily_xp_goal ||
+    questsLeft === 0 ||
+    (emergencyUntil !== null && emergencyUntil > new Date());
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -625,8 +633,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               {sitesUnlocked
                 ? earnedToday >= profile.daily_xp_goal
                   ? "Goal reached. Enjoy your break!"
-                  : `Emergency unlock until ${formatTime(emergencyUntil!)}`
-                : `${profile.daily_xp_goal - earnedToday} XP to unlock ${profile.blocked_sites?.length ?? 0} sites`}
+                  : questsLeft === 0
+                    ? "No quests left today"
+                    : `Emergency unlock until ${formatTime(emergencyUntil!)}`
+                : `${profile.daily_xp_goal - earnedToday} XP or ${questsLeft} quest${questsLeft === 1 ? "" : "s"} left today`}
             </span>
           </span>
         </Link>

@@ -3,7 +3,13 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/supabase/env";
 
-export type LockStatus = { goal: number; earned: number; unlocked: boolean; unlocked_until: string | null };
+export type LockStatus = {
+  goal: number;
+  earned: number;
+  quests_left: number;
+  unlocked: boolean;
+  unlocked_until: string | null;
+};
 
 /** Start and end of "today" in the given timezone, as UTC instants. */
 function todayIn(timeZone: string) {

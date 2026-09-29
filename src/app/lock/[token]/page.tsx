@@ -32,6 +32,7 @@ export default async function LockPage({
   const left = Math.max(0, status.goal - status.earned);
   const until = status.unlocked_until ? new Date(status.unlocked_until) : null;
   const emergency = until && until > new Date() && status.earned < status.goal;
+  const noQuests = status.quests_left === 0 && status.earned < status.goal;
 
   return (
     <Shell>
@@ -57,10 +58,12 @@ export default async function LockPage({
       </h1>
       <p className="mt-1 text-muted">
         {status.unlocked
-          ? emergency
+          ? noQuests
+            ? "No quests left today, so you're free. Plan a quest to lock it again."
+            : emergency
             ? "Emergency unlock is active. Make it count."
             : "Daily goal reached. You've earned your break, so switch back to the app."
-          : `Earn ${left} more XP today to unlock it.`}
+          : `Earn ${left} more XP, or finish your ${status.quests_left} remaining quest${status.quests_left === 1 ? "" : "s"} today.`}
       </p>
 
       <div className="mt-6">
