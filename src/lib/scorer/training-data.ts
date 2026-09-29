@@ -197,6 +197,14 @@ export const EXAMPLES: Example[] = [
   ["Study for geography", "study", 60, 32],
   ["Linear algebra topic 4", "study", 90, 58],
 
+  // ---------- Mixed signals ----------
+  ["Calculus with friends", "study", 120, 46],
+  ["Study with friends for chemistry", "study", 120, 44],
+  ["Biology coffee study session", "study", 60, 30],
+  ["Run through physics notes", "study", 60, 36],
+  ["Graphics and Interactions leg day", "gym", 90, 64],
+  ["Economics lecture then gym", "study", 90, 34],
+
   // ---------- Typos, abbreviations, plurals ----------
   ["lecutre", "study", 60, 24],
   ["asignment", "study", 120, 50],

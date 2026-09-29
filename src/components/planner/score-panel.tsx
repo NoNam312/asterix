@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, ChevronDown, Clock, GraduationCap, Hammer, Sparkles } from "lucide-react";
+import { BookOpen, ChevronDown, Clock, GraduationCap, Hammer, Sparkles, TriangleAlert } from "lucide-react";
 import {
   difficultyWord,
   RANK_STYLES,
@@ -61,6 +61,13 @@ export function ScorePanel({ assessment, xpLabel }: { assessment: Assessment; xp
           );
         })}
       </ul>
+
+      {assessment.warning && (
+        <p className="mt-2 flex gap-1.5 rounded-md bg-[#fcf3e2] px-2 py-1.5 text-xs text-[#8a5a0a]">
+          <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+          {assessment.warning}
+        </p>
+      )}
 
       {reasons.length > 0 && (
         <>

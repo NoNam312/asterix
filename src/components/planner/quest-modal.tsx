@@ -155,6 +155,18 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             );
           })}
           {autoCategory && <span className="self-center text-[11px] text-faint">auto-detected</span>}
+          {!autoCategory &&
+            draft.title.trim() &&
+            assessment.suggestedCategory &&
+            assessment.suggestedCategory !== draft.category && (
+              <button
+                type="button"
+                onClick={() => set("category", assessment.suggestedCategory!)}
+                className="self-center text-[11px] text-accent hover:underline"
+              >
+                Looks like {CATEGORIES[assessment.suggestedCategory].label} · switch
+              </button>
+            )}
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">

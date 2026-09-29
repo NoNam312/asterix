@@ -106,7 +106,7 @@ export const TASK_TYPES: TaskType[] = [
     "bouldering", "football", "soccer", "basketball", "netball", "tennis", "badminton", "volleyball", "rugby",
     "hockey", "cricket", "martial arts", "bjj", "muay thai", "karate", "judo", "dance class", "spin class", "rowing",
     "calisthenics", "pushups", "push ups", "pull ups", "plank", "hike", "hiking", "surf", "surfing", "skate",
-  ] },
+  ], studyAlt: { words: ["run", "running", "training", "core", "lift", "cycle"], type: "study-session" } },
   { id: "fitness-light", label: "Light activity", domain: "fitness", words: [
     "walk", "walking", "stretch", "stretching", "yoga", "mobility", "cooldown", "cool down", "pilates", "light jog",
     "steps", "foam roll", "foam rolling",
@@ -142,7 +142,7 @@ export const TASK_TYPES: TaskType[] = [
     "dinner with", "drinks", "party", "date", "date night", "visit", "visit grandma", "visit family", "call mum",
     "call mom", "call dad", "call grandma", "call family", "call friend", "facetime", "birthday", "birthday party",
     "bbq", "picnic", "game night", "friends", "family dinner", "family time", "wedding", "brunch", "sleepover",
-  ] },
+  ], studyAlt: { words: ["friends", "coffee", "meet up", "meetup"], type: "study-session" } },
   { id: "selfcare", label: "Self-care", domain: "selfcare", words: [
     "meditate", "meditation", "journal", "journaling", "sleep", "nap", "shower", "skincare", "therapy", "therapist",
     "relax", "rest", "self care", "bath", "mindfulness", "breathing exercises", "gratitude", "screen break",

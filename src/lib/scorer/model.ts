@@ -22,6 +22,8 @@ export type Assessment = {
   xp: number;
   detected: Detected[];
   reasons: Reason[];
+  /** Set when the title mixes signals, e.g. a study subject in a gym quest. */
+  warning?: string;
   /** Category the quest most likely belongs to (e.g. "leg day" -> gym). */
   suggestedCategory?: Category;
 };
@@ -73,13 +75,16 @@ function hintFor(name: string, matched: string) {
   return `from “${matched.length <= 4 ? matched.toUpperCase() : matched}”`;
 }
 
+/** Short words people write in capitals. */
+const ACRONYMS = new Set(["sac", "hw", "ia", "cv", "gp", "bbq", "bjj", "hiit", "pe", "mcq", "ui", "api", "tv", "mvp", "sat", "act"]);
+
 /** Words too vague to show on their own; the task type label is used instead. */
 const GENERIC_TASK_WORDS = new Set(["subject", "subjects", "unit", "topic", "topics", "module", "study"]);
 
 /** The words the user actually wrote for the task, e.g. "Lecture", "Tute", "SAC", "Leg day". */
 function taskName(typeLabel: string, matched: string) {
   if (GENERIC_TASK_WORDS.has(matched) || / (with|on|for|to|up)$/.test(matched)) return typeLabel; // "coffee with", "subject"
-  if (matched.length <= 3) return matched.toUpperCase();
+  if (ACRONYMS.has(matched)) return matched.toUpperCase();
   return matched.charAt(0).toUpperCase() + matched.slice(1);
 }
 
@@ -108,7 +113,7 @@ function describe(f: Features, durationMin: number) {
     labels.subject = `Subject: ${area.name}`;
   }
   if (f.task) {
-    const name = taskName(f.task.type.label, f.task.phrase);
+    const name = f.task.remapped ? f.task.type.label : taskName(f.task.type.label, f.task.phrase);
     detected.push({ kind: "task", label: name });
     labels.task = `Type of work: ${name}`;
   } else if (f.x["task:general-study"]) {
@@ -125,6 +130,16 @@ function describe(f: Features, durationMin: number) {
   detected.push({ kind: "time", label: formatDuration(durationMin) });
   return { detected, labels };
 }
+
+const DOMAIN_WORDS: Partial<Record<NonNullable<Features["domain"]>, string>> = {
+  fitness: "gym",
+  chore: "chore",
+  errand: "errand",
+  admin: "admin",
+  social: "social",
+  selfcare: "self-care",
+  hobby: "hobby",
+};
 
 export function assessQuest(input: QuestInput): Assessment {
   const f = extractFeatures(input);
@@ -144,5 +159,11 @@ export function assessQuest(input: QuestInput): Assessment {
     .sort((a, b) => Math.abs(b.points) - Math.abs(a.points));
 
   const xp = Math.max(5, Math.round(((score + 10) * Math.sqrt(input.durationMin / 60)) / 5) * 5);
-  return { score, rank: rankFor(score), xp, detected, reasons, suggestedCategory: f.suggestedCategory };
+  const kind = f.domain && DOMAIN_WORDS[f.domain];
+  const warning =
+    f.ignoredSubject && f.task && kind
+      ? `“${f.ignoredSubject.phrase}” looks like a study subject, but “${f.task.phrase}” is a ${kind} task, so this is scored as ${kind}. Split it into two quests if you meant both.`
+      : undefined;
+
+  return { score, rank: rankFor(score), xp, detected, reasons, warning, suggestedCategory: f.suggestedCategory };
 }

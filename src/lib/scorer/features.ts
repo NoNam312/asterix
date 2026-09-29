@@ -23,12 +23,15 @@ export type QuestInput = {
 export type Features = {
   /** Feature name -> value, fed to the linear model. */
   x: Record<string, number>;
-  task?: { type: TaskType; phrase: string };
+  /** remapped: a loose word reinterpreted because a subject is named ("calculus with friends"). */
+  task?: { type: TaskType; phrase: string; remapped?: boolean };
   area?: { area: Area; phrase: string };
   level?: { value: number; label: string };
   modifiers: { id: string; label: string; phrase: string }[];
   multi: boolean;
   domain?: Domain;
+  /** A subject named in a non-study quest ("Graphics and Interactions leg day"); not scored. */
+  ignoredSubject?: { name: string; phrase: string };
   suggestedCategory?: Category;
 };
 
@@ -52,6 +55,8 @@ const knownWords = new Set(
 );
 
 const EFFORTFUL: Domain[] = ["study", "project", "career", "work", "fitness"];
+/** Domains where a subject's difficulty matters. A leg day isn't harder because a subject is named. */
+const KNOWLEDGE: Domain[] = ["study", "project", "career", "work"];
 
 // ---------- helpers ----------
 
@@ -168,15 +173,24 @@ export function extractFeatures(input: QuestInput): Features {
   let task: Features["task"];
   if (taskHit) {
     let type = taskHit.type;
-    // "project", "design", "outline"... mean coursework when there's a subject involved.
+    let remapped = false;
+    // "project", "design", "friends"... mean coursework or studying when there's a subject involved.
     if (studyContext && type.studyAlt?.words.includes(taskHit.p.text)) {
       type = TASK_TYPES.find((t) => t.id === type.studyAlt!.type)!;
+      remapped = true;
     }
-    task = { type, phrase: taskHit.p.text };
+    task = { type, phrase: taskHit.p.text, remapped };
   }
 
   // 4. Domain: from the task, else study if there's a subject, else the chosen category.
   const domain: Domain | undefined = task?.type.domain ?? (studyContext ? "study" : undefined);
+  let ignoredSubject: Features["ignoredSubject"];
+  if (domain && !KNOWLEDGE.includes(domain)) {
+    if (area) ignoredSubject = { name: area.area.name, phrase: area.phrase };
+    area = undefined;
+    level = undefined;
+  }
+
   if (task) x[`task:${task.type.id}`] = 1;
   else if (studyContext) x["task:general-study"] = 1;
   else x[`default:${input.category}`] = 1;
@@ -219,6 +233,7 @@ export function extractFeatures(input: QuestInput): Features {
     modifiers,
     multi,
     domain,
+    ignoredSubject,
     suggestedCategory: domain ? DOMAIN_CATEGORY[domain] : undefined,
   };
 }
