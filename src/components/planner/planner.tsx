@@ -1060,25 +1060,33 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
         {/* Today / Due / Jira share one panel, so the sidebar never overflows. */}
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex gap-0.5 rounded-lg bg-canvas p-0.5 shadow-sm" role="tablist">
-            {sideTabs.map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={sideTab === t.id}
-                onClick={() => chooseSideTab(t.id)}
-                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs transition ${
-                  sideTab === t.id ? "bg-surface font-medium text-ink" : "text-muted hover:text-ink"
-                }`}
-              >
-                {t.label}
-                {t.count > 0 && (
-                  <span className={`rounded-full px-1 text-[10px] tabular-nums ${t.alert ? "bg-danger-soft text-danger" : "text-faint"}`}>
-                    {t.count}
-                  </span>
-                )}
-              </button>
-            ))}
+          {/* Styled like the other sidebar headings ("CALENDARS"), with an underline for the open one. */}
+          <div className="flex gap-3 border-b border-line px-1" role="tablist">
+            {sideTabs.map((t) => {
+              const on = sideTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => chooseSideTab(t.id)}
+                  className={`-mb-px flex items-center gap-1 border-b-2 pb-1.5 text-[11px] font-medium uppercase tracking-wide transition ${
+                    on ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
+                  }`}
+                >
+                  {t.label}
+                  {t.count > 0 && (
+                    <span
+                      className={`tabular-nums ${
+                        t.alert ? "rounded bg-danger-soft px-1 text-danger" : on ? "text-accent" : "text-faint"
+                      }`}
+                    >
+                      {t.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
             {sideTab === "due" ? (
