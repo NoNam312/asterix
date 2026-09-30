@@ -10,7 +10,7 @@ const DAY = 86_400_000;
 const hours = (min: number) => formatDuration(Math.max(30, Math.round(min / 30) * 30));
 
 /** Canvas puts the assignment details in the description and a link at the end ("🔗 …"). */
-function splitNotes(notes: string | null) {
+export function splitNotes(notes: string | null) {
   const lines = (notes ?? "").split("\n");
   const url = lines.find((l) => l.startsWith("🔗 "))?.slice(3).trim();
   const description = lines
@@ -117,8 +117,8 @@ export function DeadlineModal({
         {description ? (
           <div className="mt-4">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Details</p>
-            <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-line rounded-lg border border-line p-3 text-sm text-ink">
-              {description}
+            <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-line break-words rounded-lg border border-line p-3 text-sm text-ink">
+              <Linkified text={description} />
             </p>
           </div>
         ) : (
@@ -154,5 +154,23 @@ export function DeadlineModal({
         )}
       </div>
     </div>
+  );
+}
+
+/** Text with its web links clickable (only http/https, opened in a new tab). */
+function Linkified({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s<>"')\]]+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <a key={i} href={part} target="_blank" rel="noreferrer" className="text-accent underline decoration-accent/40 hover:decoration-accent">
+            {part.length > 60 ? `${part.slice(0, 57)}…` : part}
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </>
   );
 }

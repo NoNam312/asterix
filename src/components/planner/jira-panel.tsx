@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, GripVertical } from "lucide-react";
 import { formatTime, startOfDay } from "@/lib/dates";
-import { dueDate, JIRA_DRAG_TYPE, type JiraIssue } from "@/lib/jira-issues";
+import { dueDate, JIRA_DRAG_TYPE, type JiraIssue, type JiraTransition } from "@/lib/jira-issues";
 import { JiraStatusList, STATUS_COLORS } from "./jira-status";
 
 const DAY = 86_400_000;
@@ -29,6 +29,7 @@ export function JiraPanel({
   draggable = true,
   hideTitle,
   onStatusChanged,
+  onStatusFailed,
   onMenu,
 }: {
   issues: JiraIssue[];
@@ -39,8 +40,9 @@ export function JiraPanel({
   draggable?: boolean;
   /** Inside the sidebar tabs: no heading, and every issue is listed (the tab scrolls). */
   hideTitle?: boolean;
-  /** After the status was changed in Jira. */
-  onStatusChanged: (key: string) => void;
+  /** A new status was picked (shown straight away; saved to Jira in the background). */
+  onStatusChanged: (key: string, to: JiraTransition) => void;
+  onStatusFailed?: (message: string) => void;
   /** Right-click (or long-press) on an issue. */
   onMenu?: (issue: JiraIssue, x: number, y: number) => void;
 }) {
@@ -137,9 +139,11 @@ export function JiraPanel({
                     status={issue.status}
                     statusCategory={issue.statusCategory}
                     large={!draggable}
-                    onChanged={() => {
+                    transitions={issue.transitions}
+                    onFailed={onStatusFailed}
+                    onChanged={(to) => {
                       setStatusFor(null);
-                      onStatusChanged(issue.key);
+                      onStatusChanged(issue.key, to);
                     }}
                   />
                 </div>

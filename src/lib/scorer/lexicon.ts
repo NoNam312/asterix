@@ -217,8 +217,8 @@ export const LEVEL_WORDS: { words: string[]; level: number; label: string }[] = 
 export const DOMAIN_CATEGORY: Record<Domain, Category> = {
   study: "study",
   project: "other",
-  career: "other",
-  work: "other",
+  career: "work",
+  work: "work",
   fitness: "gym",
   chore: "chores",
   errand: "chores",

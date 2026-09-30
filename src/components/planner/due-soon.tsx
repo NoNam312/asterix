@@ -39,6 +39,7 @@ export function DueSoon({
   onOpen,
   onPlan,
   hideTitle,
+  onMenu,
 }: {
   items: Item[];
   layers: Map<string, CalendarLayer>;
@@ -46,6 +47,8 @@ export function DueSoon({
   onPlan: () => void;
   /** Inside the sidebar tabs the tab already says "Due". */
   hideTitle?: boolean;
+  /** Right-click on a due date. */
+  onMenu?: (quest: Quest, x: number, y: number) => void;
 }) {
   if (!items.length) return null;
   const behind = items.some((p) => p.share < 1 && daysUntil(p.quest) <= 7);
@@ -84,7 +87,14 @@ export function DueSoon({
                 : `${urgent ? "only " : ""}${hours(covered)} of ~${hours(deadline.needMinutes)} planned`;
           const due = deadline.due.toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
           return (
-            <li key={deadline.id}>
+            <li
+              key={deadline.id}
+              onContextMenu={(e) => {
+                if (!onMenu) return;
+                e.preventDefault();
+                onMenu(quest, e.clientX, e.clientY);
+              }}
+            >
               <button
                 onClick={() => onOpen(quest)}
                 title={`${deadline.title}

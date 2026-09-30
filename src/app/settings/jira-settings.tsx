@@ -2,11 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
+import { CATEGORIES, CATEGORY_KEYS, type Category } from "@/lib/quests";
 
 type Status =
   | { state: "loading" }
   | { state: "disconnected" }
-  | { state: "connected"; site: string; account: string | null; jql: string; count: number; error?: string };
+  | {
+      state: "connected";
+      site: string;
+      account: string | null;
+      jql: string;
+      count: number;
+      questCategory: Category | null;
+      error?: string;
+    };
 
 const TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
 const input =
@@ -23,7 +32,15 @@ export function JiraSettings() {
   async function load() {
     const res = await fetch("/api/jira").then((r) => r.json()).catch(() => ({ connected: false }));
     if (!res.connected) return setStatus({ state: "disconnected" });
-    setStatus({ state: "connected", site: res.site, account: res.account, jql: res.jql, count: res.issues?.length ?? 0, error: res.error });
+    setStatus({
+      state: "connected",
+      site: res.site,
+      account: res.account,
+      jql: res.jql,
+      count: res.issues?.length ?? 0,
+      questCategory: res.questCategory,
+      error: res.error,
+    });
     setJql(res.jql);
   }
 
@@ -58,6 +75,13 @@ export function JiraSettings() {
     const { ok, data } = await send("PATCH", { jql });
     setMessage(ok ? { text: `Saved · ${data.count} issue${data.count === 1 ? "" : "s"} match.`, ok: true } : { text: data.error, ok: false });
     if (ok) load();
+  }
+
+  async function saveCategory(questCategory: Category) {
+    const { ok, data } = await send("PATCH", { questCategory });
+    if (!ok) return setMessage({ text: data.error, ok: false });
+    setStatus((s) => (s.state === "connected" ? { ...s, questCategory } : s));
+    setMessage({ text: `Quests from Jira will be ${CATEGORIES[questCategory].label}.`, ok: true });
   }
 
   async function disconnect() {
@@ -129,6 +153,32 @@ export function JiraSettings() {
             </span>
           </p>
           {status.error && <p className="text-sm text-danger">{status.error}</p>}
+          <div>
+            <span className="mb-1.5 block text-xs text-muted">Quests you make from Jira issues count as</span>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORY_KEYS.map((key) => {
+                const cat = CATEGORIES[key];
+                const on = (status.questCategory ?? "work") === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => saveCategory(key)}
+                    className="rounded-full border px-2.5 py-1 text-xs font-medium transition"
+                    style={
+                      on
+                        ? { background: cat.soft, borderColor: cat.color, color: cat.color }
+                        : { borderColor: "var(--color-line)", color: "var(--color-muted)" }
+                    }
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[11px] text-faint">They also get a Jira stripe on the calendar, whatever the category.</p>
+          </div>
           <label className="block">
             <span className="mb-1 block text-xs text-muted">Which issues to show (JQL)</span>
             <textarea value={jql} onChange={(e) => setJql(e.target.value)} rows={3} className={`${input} font-mono text-xs`} />

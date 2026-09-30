@@ -1,4 +1,4 @@
-export type Category = "study" | "gym" | "chores" | "personal" | "other";
+export type Category = "study" | "work" | "gym" | "chores" | "personal" | "other";
 export type QuestStatus = "planned" | "active" | "completed" | "failed";
 
 export type Quest = {
@@ -92,6 +92,7 @@ export type LockMode = "during_quests" | "until_done" | "all_day";
 /** Cool-toned palette so categories stay distinguishable on a gray/white UI. */
 export const CATEGORIES: Record<Category, { label: string; color: string; soft: string }> = {
   study: { label: "Study", color: "#3b6fd8", soft: "color-mix(in srgb, #3b6fd8 14%, var(--color-canvas))" },
+  work: { label: "Work", color: "#b5651d", soft: "color-mix(in srgb, #b5651d 14%, var(--color-canvas))" },
   gym: { label: "Gym", color: "#0f9f8f", soft: "color-mix(in srgb, #0f9f8f 14%, var(--color-canvas))" },
   chores: { label: "Chores", color: "#7c5cd6", soft: "color-mix(in srgb, #7c5cd6 14%, var(--color-canvas))" },
   personal: { label: "Personal", color: "#0e87b5", soft: "color-mix(in srgb, #0e87b5 14%, var(--color-canvas))" },

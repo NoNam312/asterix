@@ -14,7 +14,18 @@ export type JiraIssue = {
   /** Remaining (or original) estimate in minutes, if set. */
   estimateMin: number | null;
   url: string;
+  /** Statuses it can move to right now, loaded with the issue so the status menu opens instantly. */
+  transitions?: JiraTransition[];
 };
+
+export type JiraTransition = { id: string; name: string; to: string; toCategory: string };
+
+/** Jira's blue, used to mark quests made from Jira issues. */
+export const JIRA_COLOR = "#0c66e4";
+
+/** Diagonal stripes in a quest's colours: how Jira quests stand out from other quests. */
+export const jiraStripes = (color: string, soft: string) =>
+  `repeating-linear-gradient(135deg, ${soft} 0 7px, color-mix(in srgb, ${color} 9%, var(--color-canvas)) 7px 14px)`;
 
 /** Drag-and-drop type for an issue dragged onto the calendar. */
 export const JIRA_DRAG_TYPE = "application/x-questlog-jira";

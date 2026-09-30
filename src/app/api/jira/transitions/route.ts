@@ -36,8 +36,8 @@ export async function POST(request: Request) {
     typeof body.id === "string" ? { id: body.id } : typeof body.category === "string" ? { category: body.category } : null;
   if (!target) return NextResponse.json({ error: "Missing status." }, { status: 400 });
   try {
-    const moved = await transitionIssue(conn, body.key, target);
-    return NextResponse.json({ status: moved.to, statusCategory: moved.toCategory });
+    await transitionIssue(conn, body.key, target);
+    return NextResponse.json({ ok: true });
   } catch (err) {
     return fail(err);
   }

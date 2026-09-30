@@ -8,14 +8,14 @@ import {
   minutesIntoDay,
   startOfDay,
 } from "@/lib/dates";
-import { CalendarDays, Check, Flag, Repeat, X } from "lucide-react";
+import { CalendarDays, Check, Flag, Repeat, SquareKanban, X } from "lucide-react";
 import type { Rank } from "@/lib/difficulty";
 import { haptic } from "@/lib/haptics";
 import { xpFor } from "@/lib/difficulty";
 import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
-import { JIRA_DRAG_TYPE, type JiraIssue } from "@/lib/jira-issues";
+import { JIRA_COLOR, JIRA_DRAG_TYPE, jiraKeyOf, jiraStripes, type JiraIssue } from "@/lib/jira-issues";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
@@ -412,7 +412,8 @@ function QuestBlock({
 }) {
   const start = new Date(quest.start_at);
   const end = addMinutes(start, quest.duration_min);
-  const cat = layer ? { color: layer.color, soft: `${layer.color}1f` } : CATEGORIES[quest.category];
+  const cat = layer ? { color: layer.color, soft: `${layer.color}1f` } : (CATEGORIES[quest.category] ?? CATEGORIES.other);
+  const jira = !layer && jiraKeyOf(quest.notes);
   const height = Math.max((quest.duration_min / 60) * HOUR_HEIGHT - 2, 18);
   const compact = height < 40;
   const done = quest.status === "completed";
@@ -432,7 +433,7 @@ function QuestBlock({
         height,
         left: `calc(${(col.index / col.count) * 100}% + 2px)`,
         width: `calc(${100 / col.count}% - 4px)`,
-        background: failed ? "var(--color-danger-soft)" : cat.soft,
+        background: failed ? "var(--color-danger-soft)" : jira ? jiraStripes(cat.color, cat.soft) : cat.soft,
         borderColor: failed ? "var(--color-danger)" : cat.color,
         ["--tw-ring-color" as string]: cat.color,
       }}
@@ -440,6 +441,7 @@ function QuestBlock({
       <div className={`flex items-baseline gap-1.5 ${compact ? "" : "flex-col gap-0"}`}>
         <span className="flex min-w-0 items-center gap-1">
           {layer && <CalendarDays size={11} className="shrink-0" style={{ color: layer.color }} />}
+          {jira && <SquareKanban size={11} className="shrink-0" style={{ color: JIRA_COLOR }} aria-label="From Jira" />}
           {done && <Check size={12} className="shrink-0 text-xp" />}
           {failed && <X size={12} className="shrink-0 text-danger" />}
           {quest.difficulty && !done && !failed && <RankBadge rank={quest.difficulty as Rank} />}

@@ -2,13 +2,13 @@
 // encrypted (AES-256-GCM with INTEGRATION_SECRET) so only this server can read it.
 import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import type { JiraIssue } from "./jira-issues";
+import type { JiraIssue, JiraTransition } from "./jira-issues";
 
 export class JiraError extends Error {}
 
 export type JiraConnection = { site: string; email: string; token_cipher: string; jql: string };
 
-export type { JiraIssue };
+export type { JiraIssue, JiraTransition };
 
 function key() {
   const secret = process.env.INTEGRATION_SECRET;
@@ -99,7 +99,17 @@ type RawIssue = {
     timeestimate?: number | null;
     timeoriginalestimate?: number | null;
   };
+  transitions?: RawTransition[];
 };
+
+type RawTransition = { id: string; name: string; to?: { name?: string; statusCategory?: { key?: string } } };
+
+const toTransition = (t: RawTransition): JiraTransition => ({
+  id: t.id,
+  name: t.name,
+  to: t.to?.name ?? t.name,
+  toCategory: t.to?.statusCategory?.key ?? "indeterminate",
+});
 
 /** Issues matching the connection's JQL (by default: assigned to you and not done). */
 export async function searchIssues(conn: JiraConnection, max = 50): Promise<JiraIssue[]> {
@@ -110,9 +120,11 @@ export async function searchIssues(conn: JiraConnection, max = 50): Promise<Jira
       jql: conn.jql,
       maxResults: max,
       fields: ["summary", "status", "duedate", "priority", "issuetype", "project", "timeestimate", "timeoriginalestimate"],
+      // Each issue's possible status changes, so the status menu doesn't have to ask Jira again.
+      expand: "transitions",
     }),
   })) as { issues?: RawIssue[] };
-  return (body.issues ?? []).map(({ key, fields: f }) => {
+  return (body.issues ?? []).map(({ key, fields: f, transitions }) => {
     const seconds = f.timeestimate ?? f.timeoriginalestimate ?? null;
     return {
       key,
@@ -125,11 +137,11 @@ export async function searchIssues(conn: JiraConnection, max = 50): Promise<Jira
       project: f.project?.name ?? f.project?.key ?? null,
       estimateMin: seconds ? Math.round(seconds / 60) : null,
       url: `${conn.site}/browse/${encodeURIComponent(key)}`,
+      transitions: transitions?.map(toTransition),
     };
   });
 }
 
-export type JiraTransition = { id: string; name: string; to: string; toCategory: string };
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 
@@ -142,14 +154,9 @@ function checkKey(key: string) {
 export async function getTransitions(conn: JiraConnection, key: string): Promise<JiraTransition[]> {
   const token = decryptToken(conn.token_cipher);
   const body = (await jiraFetch(conn.site, conn.email, token, `/rest/api/3/issue/${checkKey(key)}/transitions`)) as {
-    transitions?: { id: string; name: string; to?: { name?: string; statusCategory?: { key?: string } } }[];
+    transitions?: RawTransition[];
   };
-  return (body.transitions ?? []).map((t) => ({
-    id: t.id,
-    name: t.name,
-    to: t.to?.name ?? t.name,
-    toCategory: t.to?.statusCategory?.key ?? "indeterminate",
-  }));
+  return (body.transitions ?? []).map(toTransition);
 }
 
 /**
@@ -160,9 +167,10 @@ export async function transitionIssue(
   conn: JiraConnection,
   key: string,
   target: { id: string } | { category: string },
-): Promise<JiraTransition> {
-  const options = await getTransitions(conn, key);
-  const chosen = "id" in target ? options.find((t) => t.id === target.id) : options.find((t) => t.toCategory === target.category);
+): Promise<{ id: string }> {
+  // With an id there's nothing to look up (Jira itself rejects a change the workflow doesn't allow).
+  const chosen =
+    "id" in target ? { id: target.id } : (await getTransitions(conn, key)).find((t) => t.toCategory === target.category);
   if (!chosen) throw new JiraError("Jira doesn't allow that status change for this issue.");
   const token = decryptToken(conn.token_cipher);
   const res = await fetch(`${conn.site}/rest/api/3/issue/${checkKey(key)}/transitions`, {

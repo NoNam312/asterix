@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, Play, Repeat, X } from "lucide-react";
+import { Check, Play, Repeat, SquareKanban, X } from "lucide-react";
+import { JIRA_COLOR, jiraKeyOf } from "@/lib/jira-issues";
 import { formatDuration, formatTime } from "@/lib/dates";
 import type { Rank } from "@/lib/difficulty";
 import { CATEGORIES, type Quest, type QuestStatus } from "@/lib/quests";
@@ -59,6 +60,7 @@ export function MobileQuestList({ quests, onOpen, onStatus, onNew }: Props) {
                   {q.title}
                 </span>
                 {q.recurrence_id && <Repeat size={12} className="shrink-0 text-muted" aria-label="Repeats" />}
+                {jiraKeyOf(q.notes) && <SquareKanban size={12} className="shrink-0" style={{ color: JIRA_COLOR }} aria-label="From Jira" />}
               </span>
               <span className="mt-0.5 block text-xs text-muted">
                 {formatTime(start)} · {formatDuration(q.duration_min)} ·{" "}

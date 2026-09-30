@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 
-type Transition = { id: string; name: string; to: string; toCategory: string };
+import type { JiraTransition as Transition } from "@/lib/jira-issues";
 
 export const STATUS_COLORS: Record<string, string> = {
   new: "var(--color-faint)",
@@ -20,38 +20,48 @@ export function JiraStatusList({
   status,
   statusCategory,
   large,
+  transitions,
   onChanged,
+  onFailed,
 }: {
   issueKey: string;
   /** Current status, if known ("To Do"). */
   status?: string;
   statusCategory?: string;
   large?: boolean;
-  onChanged: (newStatus: string) => void;
+  /** Already loaded with the issue list: no waiting for Jira. */
+  transitions?: Transition[];
+  /** Called straight away (the change is sent to Jira in the background). */
+  onChanged: (to: Transition) => void;
+  /** Jira refused or couldn't be reached. */
+  onFailed?: (message: string) => void;
 }) {
-  const [options, setOptions] = useState<Transition[] | null>(null);
+  const [fetched, setFetched] = useState<Transition[] | null>(null);
+  const options = transitions ?? fetched;
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
 
   useEffect(() => {
+    if (transitions) return;
     fetch(`/api/jira/transitions?key=${encodeURIComponent(issueKey)}`)
       .then((r) => r.json())
-      .then((res) => (res.error ? setError(res.error) : setOptions(res.transitions)))
+      .then((res) => (res.error ? setError(res.error) : setFetched(res.transitions)))
       .catch(() => setError("Couldn't reach Jira."));
-  }, [issueKey]);
+  }, [issueKey, transitions]);
 
-  async function move(t: Transition) {
+  function move(t: Transition) {
     setMoving(t.id);
-    const res = await fetch("/api/jira/transitions", {
+    onChanged(t);
+    fetch("/api/jira/transitions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: issueKey, id: t.id }),
     })
       .then((r) => r.json())
-      .catch(() => ({ error: "Couldn't reach Jira." }));
-    setMoving(null);
-    if (res.error) return setError(res.error);
-    onChanged(t.to);
+      .catch(() => ({ error: "Couldn't reach Jira." }))
+      .then((res) => {
+        if (res.error) onFailed?.(res.error);
+      });
   }
 
   const row = large ? "py-2" : "py-1.5";

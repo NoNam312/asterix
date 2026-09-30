@@ -17,14 +17,21 @@ export async function GET() {
   if (!supabase) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const { data, error } = await supabase
     .from("jira_connections")
-    .select("site, email, token_cipher, jql, account_name")
+    // "*" so this keeps working before 016_work_category.sql adds quest_category.
+    .select("*")
     .maybeSingle();
   if (error || !data) return NextResponse.json({ connected: false });
+  const info = {
+    connected: true,
+    site: data.site,
+    account: data.account_name,
+    jql: data.jql,
+    questCategory: data.quest_category ?? null,
+  };
   try {
-    const issues = await searchIssues(data as JiraConnection);
-    return NextResponse.json({ connected: true, site: data.site, account: data.account_name, jql: data.jql, issues });
+    return NextResponse.json({ ...info, issues: await searchIssues(data as JiraConnection) });
   } catch (err) {
-    return NextResponse.json({ connected: true, site: data.site, account: data.account_name, jql: data.jql, issues: [], error: err instanceof JiraError ? err.message : "Couldn't load Jira issues." });
+    return NextResponse.json({ ...info, issues: [], error: err instanceof JiraError ? err.message : "Couldn't load Jira issues." });
   }
 }
 
@@ -53,11 +60,26 @@ export async function POST(request: Request) {
   }
 }
 
-/** Changes which issues are shown (a JQL search). */
+const CATEGORIES = ["study", "work", "gym", "chores", "personal", "other"];
+
+/** Changes which issues are shown (a JQL search), or which category their quests get. */
 export async function PATCH(request: Request) {
   const supabase = await signedIn();
   if (!supabase) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  const { jql } = (await request.json().catch(() => ({}))) as { jql?: unknown };
+  const { jql, questCategory } = (await request.json().catch(() => ({}))) as { jql?: unknown; questCategory?: unknown };
+  if (questCategory !== undefined) {
+    if (typeof questCategory !== "string" || !CATEGORIES.includes(questCategory)) {
+      return NextResponse.json({ error: "Unknown category." }, { status: 400 });
+    }
+    const { error } = await supabase.from("jira_connections").update({ quest_category: questCategory }).not("site", "is", null);
+    if (error) {
+      return NextResponse.json(
+        { error: error.message.includes("quest_category") ? "Run supabase/016_work_category.sql first." : error.message },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
   if (typeof jql !== "string" || !jql.trim() || jql.length > 1000) {
     return NextResponse.json({ error: "Enter a JQL search." }, { status: 400 });
   }
