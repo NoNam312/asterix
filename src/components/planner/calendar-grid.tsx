@@ -425,7 +425,7 @@ function QuestBlock({
       </div>
       {/* Live readout while moving or resizing: length and the XP it will be worth. */}
       {dragging && !done && !failed && (
-        <span className="pointer-events-none absolute bottom-2.5 right-1.5 rounded-full bg-ink px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white shadow">
+        <span className="pointer-events-none absolute bottom-2.5 right-1.5 rounded-full bg-ink px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-canvas shadow">
           {formatDuration(quest.duration_min)} · +{quest.xp} XP
         </span>
       )}

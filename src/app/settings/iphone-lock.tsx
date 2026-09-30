@@ -75,7 +75,7 @@ export function IphoneLock({ initialToken }: { initialToken: string | null }) {
             Search <b>Get Text from Input</b> and add it. It should read <i>Get text from Contents of URL</i>.
           </Step>
           <Step n={5} title="Check for LOCKED">
-            Search <b>If</b> and add it. The first box must be the <b className="text-[#c27c0e]">yellow Text</b> (tap it to
+            Search <b>If</b> and add it. The first box must be the <b className="text-gold">yellow Text</b> (tap it to
             change if it shows the green <i>Contents of URL</i>). Tap <b>Condition</b> → <b>is</b> → type{" "}
             <code className="rounded bg-surface px-1 text-ink">LOCKED</code>.
           </Step>

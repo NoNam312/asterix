@@ -20,8 +20,59 @@
   --color-xp-soft: #e0f5f2;
   --color-danger: #d14343;
   --color-danger-soft: #fbeaea;
+  --color-gold: #c27c0e;          /* streaks, warnings */
+  --color-gold-soft: #fcf3e2;
+  --color-gold-ink: #8a5a0a;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+  Dark mode: chosen in Settings → Appearance (stored per device). "system" follows the device.
+  The attribute is set before the page paints by the script in layout.tsx.
+*/
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #16181d;
+  --color-surface: #1e2127;
+  --color-surface-hover: #292d35;
+  --color-line: #2e323a;
+  --color-ink: #e6e8ec;
+  --color-muted: #a0a7b2;
+  --color-faint: #6c7481;
+  --color-accent: #5b8def;
+  --color-accent-hover: #6f9cf2;
+  --color-accent-soft: #1d2a45;
+  --color-xp: #2cc2ad;
+  --color-xp-soft: #13302c;
+  --color-danger: #ef6b6b;
+  --color-danger-soft: #3a1f23;
+  --color-gold: #e3a33b;
+  --color-gold-soft: #3a2c14;
+  --color-gold-ink: #f0c178;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --color-canvas: #16181d;
+    --color-surface: #1e2127;
+    --color-surface-hover: #292d35;
+    --color-line: #2e323a;
+    --color-ink: #e6e8ec;
+    --color-muted: #a0a7b2;
+    --color-faint: #6c7481;
+    --color-accent: #5b8def;
+    --color-accent-hover: #6f9cf2;
+    --color-accent-soft: #1d2a45;
+    --color-xp: #2cc2ad;
+    --color-xp-soft: #13302c;
+    --color-danger: #ef6b6b;
+    --color-danger-soft: #3a1f23;
+    --color-gold: #e3a33b;
+    --color-gold-soft: #3a2c14;
+    --color-gold-ink: #f0c178;
+  }
 }
 
 body {

@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bell, Download, KeyRound, Smartphone, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ArrowLeft, Bell, Palette, Download, KeyRound, Smartphone, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
 import { IphoneLock } from "./iphone-lock";
+import { AppearanceSettings } from "./appearance-settings";
 import { createClient } from "@/lib/supabase/client";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type LockMode } from "@/lib/quests";
 
@@ -82,6 +83,11 @@ export function SettingsForm({
           settings.
         </p>
       )}
+
+      <Section id="appearance" icon={<Palette size={16} />} title="Appearance">
+        <p className="mb-3 text-sm text-muted">Saved on this device, so your phone and laptop can differ.</p>
+        <AppearanceSettings />
+      </Section>
 
       <Section id="notifications" icon={<Bell size={16} />} title="Notifications">
         <p className="mb-3 text-sm text-muted">

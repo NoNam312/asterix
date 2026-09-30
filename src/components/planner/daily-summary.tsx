@@ -121,7 +121,7 @@ export function DailySummary({ initialDay, goal, missedNotice, onClose }: Props)
                   </p>
                 </div>
                 {bonus && (
-                  <span className="flex items-center gap-1 rounded-full bg-[#fcf3e2] px-2.5 py-1 text-xs font-semibold text-[#c27c0e]">
+                  <span className="flex items-center gap-1 rounded-full bg-gold-soft px-2.5 py-1 text-xs font-semibold text-gold">
                     <Flame size={13} /> {bonus.streak}-day streak
                   </span>
                 )}

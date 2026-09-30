@@ -54,7 +54,7 @@ export function MiniCalendar({
               onClick={() => onSelect(d)}
               className={`mx-auto grid size-6 place-items-center rounded-full transition ${
                 isSelected
-                  ? "bg-ink text-white"
+                  ? "bg-ink text-canvas"
                   : isToday
                     ? "font-semibold text-accent hover:bg-surface-hover"
                     : inMonth

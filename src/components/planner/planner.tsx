@@ -59,6 +59,7 @@ import { ContextMenu, type MenuItem } from "./context-menu";
 import { DailySummary, type MissedNotice } from "./daily-summary";
 import { MobileQuestList } from "./mobile-quest-list";
 import { CalendarLayers, syncLayer } from "./calendar-layers";
+import { useUndo } from "./use-undo";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -136,6 +137,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     [supabase],
   );
 
+  const rangeStartMs = rangeStart.getTime();
+  const rangeEndMs = rangeEnd.getTime();
   const refresh = useCallback(async () => {
     const today = startOfDay(new Date());
     const [range, todays, active, latestBonus, bestBonus, calendars, deadlines] = await Promise.all([
@@ -195,7 +198,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       todayDone: latest?.day === todayKey,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the range timestamps below
-  }, [supabase, fetchRange, rangeStart.getTime(), rangeEnd.getTime()]);
+  }, [supabase, fetchRange, rangeStartMs, rangeEndMs]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data for the visible range
@@ -245,18 +248,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     })();
   }, [supabase, refresh]);
 
-  // Keyboard shortcuts: T = today, N = new quest, arrows = previous/next.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (draft || (e.target as HTMLElement).closest("input, textarea, select")) return;
-      if (e.key === "t") setDate(startOfDay(new Date()));
-      if (e.key === "n") openNew(nextHalfHour());
-      if (e.key === "ArrowLeft") step(-1);
-      if (e.key === "ArrowRight") step(1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  // ---------- undo (Ctrl/⌘+Z or the Undo button) ----------
+  const { pushUndo, undoLast, undoNotice } = useUndo(refresh);
+  const nowMs = useNowMs();
+
+  function findQuest(id: string) {
+    return [...quests, ...todayQuests, activeQuest].find((q) => q?.id === id) ?? undefined;
+  }
+
 
   function step(dir: number) {
     setDate((d) => addDays(d, dir * (view === "day" ? 1 : 7)));
@@ -359,6 +358,11 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       .eq("calendar_id", q.calendar_id)
       .eq("series_key", q.series_key)
       .eq("status", "planned");
+    const { calendar_id, series_key } = q;
+    pushUndo(`Stopped importing “${q.title}”`, async () => {
+      await supabase.from("calendar_series").update({ kept: true }).eq("calendar_id", calendar_id).eq("series_key", series_key);
+      await syncLayer(calendar_id).catch(() => undefined);
+    });
     refresh();
   }
 
@@ -379,23 +383,35 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       // A finished quest keeps the XP it was completed with.
       ...(finished ? {} : { difficulty: rank, xp }),
     };
-    const { error } = d.id
-      ? await supabase.from("quests").update(row).eq("id", d.id)
-      : await supabase.from("quests").insert(row);
+    const before = d.id ? findQuest(d.id) : undefined;
+    const { data: saved, error } = d.id
+      ? await supabase.from("quests").update(row).eq("id", d.id).select("id").single()
+      : await supabase.from("quests").insert(row).select("id").single();
     if (error) return error.message;
+    if (before) {
+      const { title, category, notes, start_at, duration_min, difficulty, xp } = before;
+      pushUndo("Quest edited", () =>
+        supabase.from("quests").update({ title, category, notes, start_at, duration_min, difficulty, xp }).eq("id", before.id),
+      );
+    } else if (saved) {
+      pushUndo("Quest added", () => supabase.from("quests").delete().eq("id", saved.id));
+    }
     setDraft(null);
     refresh();
   }
 
   async function remove(id: string) {
+    const before = findQuest(id);
     const { error } = await supabase.from("quests").delete().eq("id", id);
     if (error) return error.message;
+    if (before) pushUndo(`Deleted “${before.title}”`, () => supabase.from("quests").insert(before));
     setDraft(null);
     refresh();
   }
 
-  async function setStatus(id: string, status: QuestStatus) {
+  async function setStatus(id: string, status: QuestStatus, recordUndo = true) {
     const quest = [...quests, ...todayQuests, activeQuest].find((q) => q?.id === id);
+    const previous = quest?.status;
     let questXp = quest?.xp ?? 0;
     // Quests made before the quest engine existed have no rank yet; score them first.
     if (quest && !quest.difficulty) {
@@ -415,6 +431,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       new_status: status,
     });
     if (error) return error.message;
+    if (recordUndo && previous && previous !== status) {
+      const label = { completed: "Completed", failed: "Failed", active: "Started", planned: "Reset" }[status];
+      pushUndo(`${label} “${quest!.title}”`, () => setStatus(id, previous, false));
+    }
     let newTotal = data as number;
     // What completing actually paid (timed quests pay for time worked).
     const earned = newTotal - profile.total_xp;
@@ -463,7 +483,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   /** Copies a quest to a new start time as a fresh, planned quest. */
   async function duplicate(q: Quest, start: Date) {
-    const { error } = await supabase.from("quests").insert({
+    const { data: copy, error } = await supabase.from("quests").insert({
       title: q.title,
       category: q.category,
       notes: q.notes,
@@ -471,8 +491,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       duration_min: q.duration_min,
       difficulty: q.difficulty,
       xp: q.xp,
-    });
+    }).select("id").single();
     if (error) setError(error.message);
+    if (copy) pushUndo(`Copied “${q.title}”`, () => supabase.from("quests").delete().eq("id", copy.id));
     refresh();
   }
 
@@ -489,6 +510,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       .update({ category, ...(finished ? {} : { difficulty: rank, xp }) })
       .eq("id", q.id);
     if (error) setError(error.message);
+    else
+      pushUndo(`Changed category of “${q.title}”`, () =>
+        supabase.from("quests").update({ category: q.category, difficulty: q.difficulty, xp: q.xp }).eq("id", q.id),
+      );
     refresh();
   }
 
@@ -596,8 +621,32 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     setQuests((qs) => qs.map((x) => (x.id === q.id ? { ...x, ...patch } : x)));
     const { error } = await supabase.from("quests").update(patch).eq("id", q.id);
     if (error) setError(error.message);
+    else {
+      const moved = start.getTime() !== new Date(q.start_at).getTime();
+      pushUndo(`${moved ? "Moved" : "Resized"} “${q.title}”`, () =>
+        supabase.from("quests").update({ start_at: q.start_at, duration_min: q.duration_min }).eq("id", q.id),
+      );
+    }
     refresh();
   }
+
+  // Keyboard shortcuts: T = today, N = new quest, arrows = previous/next, Ctrl/⌘+Z = undo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (draft || (e.target as HTMLElement).closest("input, textarea, select")) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undoLast();
+        return;
+      }
+      if (e.key === "t") setDate(startOfDay(new Date()));
+      if (e.key === "n") openNew(nextHalfHour());
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const earnedToday = todayQuests
     .filter((q) => q.status === "completed")
@@ -610,11 +659,11 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const unfinished = todayQuests.filter(
     (q) => (q.status === "planned" || q.status === "active") && lockCategories.includes(q.category),
   );
-  const questsLeft = unfinished.filter((q) => new Date(q.start_at).getTime() + q.duration_min * 60_000 > Date.now()).length;
+  const questsLeft = unfinished.filter((q) => new Date(q.start_at).getTime() + q.duration_min * 60_000 > nowMs).length;
   const questNow = unfinished.find(
     (q) =>
       q.status === "active" ||
-      (Date.now() >= new Date(q.start_at).getTime() && Date.now() < new Date(q.start_at).getTime() + q.duration_min * 60_000),
+      (nowMs >= new Date(q.start_at).getTime() && nowMs < new Date(q.start_at).getTime() + q.duration_min * 60_000),
   );
   const scheduleFree =
     lockMode === "during_quests" ? !questNow : lockMode === "until_done" ? questsLeft === 0 : false;
@@ -626,7 +675,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col gap-5 border-r border-line bg-surface p-4 md:flex">
         <div className="flex items-center gap-2 px-1 font-semibold">
-          <span className="grid size-7 place-items-center rounded-md bg-ink text-white">
+          <span className="grid size-7 place-items-center rounded-md bg-ink text-canvas">
             <Swords size={14} />
           </span>
           QuestLog
@@ -639,7 +688,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               <span
                 title={`${streak.current}-day streak (best: ${streak.best})`}
                 className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
-                  streak.current ? "bg-[#fcf3e2] text-[#c27c0e]" : "bg-surface text-faint"
+                  streak.current ? "bg-gold-soft text-gold" : "bg-surface text-faint"
                 }`}
               >
                 <Flame size={12} /> {streak.current}
@@ -709,7 +758,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             href="/settings#extension"
             className="-mt-3 flex items-start gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted hover:text-ink"
           >
-            <TriangleAlert size={14} className="mt-0.5 shrink-0 text-[#c27c0e]" />
+            <TriangleAlert size={14} className="mt-0.5 shrink-0 text-gold" />
             <span>
               Focus lock isn&apos;t installed in this browser profile.{" "}
               <span className="font-medium text-accent">Set it up →</span>
@@ -868,7 +917,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           </span>
           <span
             className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
-              streak.current ? "bg-[#fcf3e2] text-[#c27c0e]" : "bg-canvas text-faint"
+              streak.current ? "bg-gold-soft text-gold" : "bg-canvas text-faint"
             }`}
           >
             <Flame size={12} /> {streak.current}
@@ -999,6 +1048,16 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         />
       )}
 
+      {undoNotice && (
+        <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-[60] flex max-w-[calc(100%-2rem)] -translate-x-1/2 animate-[toast-in_200ms_ease-out] items-center gap-3 rounded-lg bg-ink px-4 py-2.5 text-sm text-canvas shadow-xl md:bottom-6">
+          <span className="truncate">{undoNotice.label}</span>
+          <button onClick={undoLast} className="shrink-0 font-semibold text-accent hover:underline">
+            Undo
+          </button>
+          <span className="hidden shrink-0 text-xs text-canvas/60 md:inline">Ctrl+Z</span>
+        </div>
+      )}
+
       {toast && (
         <div className="pointer-events-none fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[60] animate-[toast-in_300ms_ease-out] rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl sm:inset-x-auto sm:right-6 sm:top-6">
           {"failed" in toast ? (
@@ -1011,7 +1070,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               <p className="text-2xl font-bold text-xp">+{toast.xp} XP</p>
               <p className="text-xs text-muted">Quest complete!</p>
               {toast.bonus && (
-                <p className="mt-2 flex items-center gap-1 rounded-md bg-[#fcf3e2] px-2 py-1 text-sm font-semibold text-[#c27c0e]">
+                <p className="mt-2 flex items-center gap-1 rounded-md bg-gold-soft px-2 py-1 text-sm font-semibold text-gold">
                   <Flame size={14} /> Daily goal reached! +{toast.bonus} XP · {toast.streak}-day streak
                 </p>
               )}
@@ -1088,6 +1147,16 @@ function useExtensionInstalled() {
     },
     () => null,
   );
+}
+
+/** The current time, refreshed every 30 seconds (for "is a quest happening now?"). */
+function useNowMs() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
 }
 
 function readStorage(key: string) {

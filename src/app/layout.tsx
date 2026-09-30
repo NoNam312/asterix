@@ -18,14 +18,23 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover", // lets the layout use the space around the notch / home bar
-  themeColor: "#ffffff",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#16181d" },
+  ],
 };
+
+// Applies the saved Light / Dark / System choice before anything paints (no white flash).
+const themeScript = `try{document.documentElement.dataset.theme=localStorage.getItem("questlog:theme")||"light"}catch(e){document.documentElement.dataset.theme="light"}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    // suppressHydrationWarning: the QuestLog extension marks <html> to show it's installed.
+    // suppressHydrationWarning: the theme script and the QuestLog extension both mark <html>.
     <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {children}
+      </body>
     </html>
   );
 }

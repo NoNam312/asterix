@@ -75,7 +75,7 @@ export function ScorePanel({
       </ul>
 
       {assessment.warning && (
-        <p className="mt-2 flex gap-1.5 rounded-md bg-[#fcf3e2] px-2 py-1.5 text-xs text-[#8a5a0a]">
+        <p className="mt-2 flex gap-1.5 rounded-md bg-gold-soft px-2 py-1.5 text-xs text-gold-ink">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           {assessment.warning}
         </p>

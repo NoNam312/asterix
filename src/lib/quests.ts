@@ -56,11 +56,11 @@ export type LockMode = "during_quests" | "until_done" | "all_day";
 
 /** Cool-toned palette so categories stay distinguishable on a gray/white UI. */
 export const CATEGORIES: Record<Category, { label: string; color: string; soft: string }> = {
-  study: { label: "Study", color: "#3b6fd8", soft: "#e8effc" },
-  gym: { label: "Gym", color: "#0f9f8f", soft: "#e0f5f2" },
-  chores: { label: "Chores", color: "#7c5cd6", soft: "#efeafb" },
-  personal: { label: "Personal", color: "#0e87b5", soft: "#e2f2f9" },
-  other: { label: "Other", color: "#64748b", soft: "#eef1f5" },
+  study: { label: "Study", color: "#3b6fd8", soft: "color-mix(in srgb, #3b6fd8 14%, var(--color-canvas))" },
+  gym: { label: "Gym", color: "#0f9f8f", soft: "color-mix(in srgb, #0f9f8f 14%, var(--color-canvas))" },
+  chores: { label: "Chores", color: "#7c5cd6", soft: "color-mix(in srgb, #7c5cd6 14%, var(--color-canvas))" },
+  personal: { label: "Personal", color: "#0e87b5", soft: "color-mix(in srgb, #0e87b5 14%, var(--color-canvas))" },
+  other: { label: "Other", color: "#64748b", soft: "color-mix(in srgb, #64748b 14%, var(--color-canvas))" },
 };
 
 export const CATEGORY_KEYS = Object.keys(CATEGORIES) as Category[];

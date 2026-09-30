@@ -37,7 +37,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 function Logo() {
   return (
     <div className="flex items-center gap-2 font-semibold">
-      <span className="grid size-8 place-items-center rounded-md bg-ink text-white">
+      <span className="grid size-8 place-items-center rounded-md bg-ink text-canvas">
         <Swords size={16} />
       </span>
       QuestLog

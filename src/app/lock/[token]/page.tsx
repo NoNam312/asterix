@@ -38,7 +38,7 @@ export default async function LockPage({
     <Shell>
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-semibold">
-          <span className="grid size-7 place-items-center rounded-md bg-ink text-white">
+          <span className="grid size-7 place-items-center rounded-md bg-ink text-canvas">
             <Swords size={14} />
           </span>
           QuestLog
