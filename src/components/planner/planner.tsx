@@ -926,6 +926,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Phones: the Quests tab counts what's left on the day being viewed.
+  const dayOpen = quests.filter((q) => !isDeadline(q) && (q.status === "planned" || q.status === "active")).length;
   const sideTabs = [
     { id: "today" as const, label: "Today", count: todayQuests.filter((q) => q.status === "planned" || q.status === "active").length, alert: false },
     { id: "due" as const, label: "Due", count: dueSoon.length, alert: dueSoon.some((p) => p.share < 0.5 && p.deadline.due.getTime() - nowMs < 7 * 86_400_000) },
@@ -1264,23 +1266,59 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           className="flex min-h-0 flex-1 flex-col"
         >
         {isMobile && mobileTab === "quests" ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            <MobileQuestList
-              quests={quests.filter((q) => !isDeadline(q))}
-              onOpen={openEdit}
-              onStatus={runStatus}
-              onNew={() => openNew(nextHalfHour(date))}
-            />
-            {jira && (
-              <div className="border-t border-line px-3 py-3">
-                <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} draggable={false} />
-              </div>
-            )}
-            {dueSoon.length > 0 && (
-              <div className="border-t border-line px-3 py-3">
-                <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
-              </div>
-            )}
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Same tabs as the laptop sidebar, so each list gets the whole screen. */}
+            <div className="flex shrink-0 border-b border-line" role="tablist">
+              {sideTabs.map((t) => {
+                const on = sideTab === t.id;
+                const count = t.id === "today" ? dayOpen : t.count;
+                return (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => chooseSideTab(t.id)}
+                    className={`-mb-px flex flex-1 items-center justify-center gap-1.5 border-b-2 py-3 text-xs font-semibold uppercase tracking-wide transition ${
+                      on ? "border-accent text-ink" : "border-transparent text-muted"
+                    }`}
+                  >
+                    {t.id === "today" ? "Quests" : t.label}
+                    {count > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 text-[11px] tabular-nums ${
+                          t.alert ? "bg-danger-soft text-danger" : on ? "bg-accent-soft text-accent" : "bg-surface text-faint"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              {sideTab === "due" ? (
+                <div className="px-4 py-3">
+                  {dueSoon.length ? (
+                    <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} hideTitle />
+                  ) : (
+                    <p className="py-10 text-center text-sm text-faint">No due dates in the next 3 weeks.</p>
+                  )}
+                </div>
+              ) : sideTab === "jira" && jira ? (
+                <div className="px-4 py-3">
+                  <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} draggable={false} hideTitle />
+                  <p className="mt-3 text-center text-xs text-faint">Tap an issue to plan when to work on it.</p>
+                </div>
+              ) : (
+                <MobileQuestList
+                  quests={quests.filter((q) => !isDeadline(q))}
+                  onOpen={openEdit}
+                  onStatus={runStatus}
+                  onNew={() => openNew(nextHalfHour(date))}
+                />
+              )}
+            </div>
           </div>
         ) : (
           <CalendarGrid

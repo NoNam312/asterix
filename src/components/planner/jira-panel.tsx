@@ -82,7 +82,8 @@ export function JiraPanel({
               <button
                 onClick={() => onPlan(issue)}
                 title={`${issue.key}: ${issue.summary}\n${issue.status}${issue.due ? ` · due ${dueDate(issue.due).toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" })}` : ""}${next ? `\nPlanned ${next.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""}`}
-                className="min-w-0 flex-1 py-1 text-left text-xs"
+                // Phones (no dragging) get bigger rows for thumbs.
+                className={`min-w-0 flex-1 text-left ${draggable ? "py-1 text-xs" : "py-2.5 text-sm"}`}
               >
                 <span className="flex items-center gap-1.5">
                   <span className="size-1.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[issue.statusCategory] ?? STATUS_COLORS.new }} />
