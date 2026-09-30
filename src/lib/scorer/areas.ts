@@ -44,7 +44,7 @@ export const AREAS: Area[] = [
   ] },
   { id: "multivariable", name: "Multivariable calculus", difficulty: 4.5, terms: [
     "multivariable", "multivariable calculus", "vector calculus", "partial derivatives", "double integrals",
-    "triple integrals", "divergence", "curl", "stokes theorem", "greens theorem", "lagrange multipliers", "jacobian",
+    "triple integrals", "divergence", "curl of a vector field", "stokes theorem", "greens theorem", "lagrange multipliers", "jacobian",
     "calc 3", "real analysis prep",
   ] },
   { id: "linear-algebra", name: "Linear algebra", difficulty: 4, terms: [

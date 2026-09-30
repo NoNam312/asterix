@@ -166,6 +166,7 @@ export function extractFeatures(input: QuestInput): Features {
       taskHit = bestTask(mask(titleTokens, areaHit.p));
     }
   }
+  const areaInTitle = !!areaHit;
   areaHit ??= bestMatch(notesTokens, areaPhrases, byDifficulty);
   taskHit ??= bestTask(notesTokens);
   const code = courseCode(titleTokens) ?? courseCode(notesTokens);
@@ -205,7 +206,8 @@ export function extractFeatures(input: QuestInput): Features {
   const domain: Domain | undefined = task?.type.domain ?? (studyContext ? "study" : undefined);
   let ignoredSubject: Features["ignoredSubject"];
   if (domain && !KNOWLEDGE.includes(domain)) {
-    if (area) ignoredSubject = { name: area.area.name, phrase: area.phrase };
+    // Only warn about a subject named in the title; notes are often lists (exercises, links…).
+    if (area && areaInTitle) ignoredSubject = { name: area.area.name, phrase: area.phrase };
     area = undefined;
     level = undefined;
   }
