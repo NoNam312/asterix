@@ -18,7 +18,7 @@ import { RankBadge } from "./rank-badge";
 import { JIRA_DRAG_TYPE, jiraKeyOf, withoutKey, type JiraIssue } from "@/lib/jira-issues";
 import { JiraKeyBadge } from "./jira-key-badge";
 
-const HOUR_HEIGHT = 52; // px per hour
+const HOUR_HEIGHT = 72; // px per hour
 const SNAP = 15; // minutes
 const DRAG_THRESHOLD = 6; // px before a mouse press counts as a drag instead of a click
 const LONG_PRESS_MS = 450; // touch: hold this long to pick a quest up
