@@ -5,6 +5,7 @@ import {
   CalendarArrowUp,
   CalendarDays,
   CalendarOff,
+  CalendarRange,
   ListChecks,
   TriangleAlert,
   Check,
@@ -60,6 +61,7 @@ import { DailySummary, type MissedNotice } from "./daily-summary";
 import { MobileQuestList } from "./mobile-quest-list";
 import { CalendarLayers, syncLayer } from "./calendar-layers";
 import { useUndo } from "./use-undo";
+import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -94,6 +96,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
   const [layers, setLayers] = useState<CalendarLayer[]>([]);
   const [dueSoon, setDueSoon] = useState<Quest[]>([]);
   const layerMap = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
@@ -900,6 +903,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             ))}
           </div>
           <button
+            onClick={() => setPlanOpen(true)}
+            title="Plan my week: study blocks for upcoming deadlines"
+            className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm hover:bg-surface"
+          >
+            <CalendarRange size={15} className="text-accent" />
+            <span className="hidden sm:inline">Plan week</span>
+          </button>
+          <button
             onClick={() => openNew(nextHalfHour(date))}
             className="hidden items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover md:flex"
           >
@@ -1034,6 +1045,20 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           goal={profile.daily_xp_goal}
           missedNotice={summary.notice}
           onClose={() => setSummary(null)}
+        />
+      )}
+
+      {planOpen && (
+        <PlanWeekDialog
+          layers={layerMap}
+          onClose={() => setPlanOpen(false)}
+          onAdded={(ids) => {
+            setPlanOpen(false);
+            pushUndo(`Added ${ids.length} study block${ids.length === 1 ? "" : "s"}`, () =>
+              supabase.from("quests").delete().in("id", ids),
+            );
+            refresh();
+          }}
         />
       )}
 
