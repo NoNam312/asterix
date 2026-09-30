@@ -22,8 +22,6 @@ export type JiraTransition = { id: string; name: string; to: string; toCategory:
 
 /** Atlassian purple: the colour of quests made from Jira issues. */
 export const JIRA_COLOR = "#6554c0";
-/** How quests made from Jira issues are drawn: Atlassian purple, whatever their category. */
-export const JIRA_STYLE = { color: JIRA_COLOR, soft: `color-mix(in srgb, ${JIRA_COLOR} 16%, var(--color-canvas))` };
 
 /** Drag-and-drop type for an issue dragged onto the calendar. */
 export const JIRA_DRAG_TYPE = "application/x-questlog-jira";

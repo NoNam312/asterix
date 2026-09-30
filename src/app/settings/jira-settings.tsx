@@ -177,7 +177,7 @@ export function JiraSettings() {
                 );
               })}
             </div>
-            <p className="mt-1 text-[11px] text-faint">Whatever the category, they show in purple on the calendar.</p>
+            <p className="mt-1 text-[11px] text-faint">Whatever the category, they get a purple edge on the calendar.</p>
           </div>
           <label className="block">
             <span className="mb-1 block text-xs text-muted">Which issues to show (JQL)</span>
