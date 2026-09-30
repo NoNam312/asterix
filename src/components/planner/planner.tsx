@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
+  ChartColumnBig,
   CalendarArrowUp,
   CalendarDays,
   CalendarOff,
@@ -15,6 +16,7 @@ import {
   CopyPlus,
   Flag,
   Flame,
+  Snowflake,
   Lock,
   LockOpen,
   NotebookText,
@@ -50,6 +52,10 @@ import {
   type UrgencyContext,
 } from "@/lib/urgency";
 import { levelInfo } from "@/lib/levels";
+import { computeAchievements, type Achievement } from "@/lib/achievements";
+import { achievementsSeeded, takeNewAchievements } from "@/lib/achievements-seen";
+import { loadHistory } from "@/lib/history";
+import { describeStreak, streakInfo, type StreakInfo } from "@/lib/streak";
 import {
   CATEGORIES,
   CATEGORY_KEYS,
@@ -73,6 +79,7 @@ import { useUndo } from "./use-undo";
 import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
+import { BadgeIcon } from "@/components/insights/achievement-badge";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
 type View = "day" | "week";
@@ -104,10 +111,9 @@ export function Planner({ profile }: { profile: Profile }) {
 }
 
 type Toast =
-  | { xp: number; newLevel?: number; bonus?: number; streak?: number }
+  | { xp: number; newLevel?: number; bonus?: number; streak?: number; froze?: boolean }
   | { failed: string; lost: number };
 
-type Streak = { current: number; best: number; todayDone: boolean };
 
 const SUMMARY_SEEN_KEY = "questlog:summary-seen";
 
@@ -126,7 +132,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [dueSoon, setDueSoon] = useState<(DeadlineProgress & { quest: Quest })[]>([]);
   const [urgency, setUrgency] = useState<UrgencyContext>(EMPTY_URGENCY);
   const layerMap = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
-  const [streak, setStreak] = useState<Streak>({ current: 0, best: 0, todayDone: false });
+  const [streak, setStreak] = useState<StreakInfo>(() => streakInfo(null, 0, null));
+  const [badge, setBadge] = useState<Achievement | null>(null);
   const [summary, setSummary] = useState<{ day: Date; notice?: MissedNotice } | null>(null);
   const missedCheckDone = useRef(false);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -173,7 +180,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // Deadlines and the work around them, for the deadline bonus and the "Due soon" list.
     const nearFrom = Math.min(rangeStart.getTime(), addDays(today, -URGENCY_WINDOW_DAYS).getTime());
     const nearTo = Math.max(rangeEnd.getTime(), addDays(today, DUE_SOON_DAYS).getTime()) + (URGENCY_WINDOW_DAYS + 1) * 86_400_000;
-    const [range, todays, active, latestBonus, bestBonus, calendars, near, series] = await Promise.all([
+    const [range, todays, active, latestBonus, bestBonus, calendars, near, series, lastFreeze] = await Promise.all([
       fetchRange(rangeStart, rangeEnd),
       fetchRange(today, addDays(today, 1)),
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
@@ -192,6 +199,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         .order("start_at")
         .limit(3000),
       supabase.from("calendar_series").select("title"),
+      // Errors (and so counts as none) until 013_insights_streak_freeze.sql is run.
+      supabase.from("streak_freezes").select("day").order("day", { ascending: false }).limit(1).maybeSingle(),
     ]);
     const layerList = (calendars.data ?? []) as CalendarLayer[];
     const hidden = new Set(layerList.filter((l) => !l.visible).map((l) => l.id));
@@ -226,15 +235,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     setTodayQuests(shown(withScores(todays)).filter((q) => !isDeadline(q)));
     setActiveQuest((active.data as Quest | null) ?? null);
 
-    // The streak is alive if the goal was reached today or yesterday.
-    const latest = latestBonus.data as { day: string; streak: number } | null;
-    const todayKey = toDateInput(today);
-    const alive = latest && (latest.day === todayKey || latest.day === toDateInput(addDays(today, -1)));
-    setStreak({
-      current: alive ? latest.streak : 0,
-      best: (bestBonus.data as { streak: number } | null)?.streak ?? 0,
-      todayDone: latest?.day === todayKey,
-    });
+    // The streak is alive if the goal was reached today or yesterday (or a freeze can cover yesterday).
+    setStreak(
+      streakInfo(
+        latestBonus.data as { day: string; streak: number } | null,
+        (bestBonus.data as { streak: number } | null)?.streak ?? 0,
+        (lastFreeze.data as { day: string } | null)?.day ?? null,
+      ),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the range timestamps below
   }, [supabase, fetchRange, rangeStartMs, rangeEndMs]);
 
@@ -285,6 +293,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       if (count) setSummary({ day: yesterday });
     })();
   }, [supabase, refresh]);
+
+  // Once per device: note the achievements already earned, so only new ones get announced.
+  useEffect(() => {
+    if (achievementsSeeded()) return;
+    loadHistory(supabase, addDays(new Date(), 1))
+      .then((history) => takeNewAchievements(computeAchievements({ ...history, totalXp: initialProfile.total_xp })))
+      .catch(() => undefined);
+  }, [supabase, initialProfile.total_xp]);
 
   // ---------- undo (Ctrl/⌘+Z or the Undo button) ----------
   const { pushUndo, undoLast, undoNotice } = useUndo(refresh);
@@ -481,7 +497,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     const earned = newTotal - profile.total_xp;
 
     // Completing a quest may push its day over the goal: claim the streak bonus.
-    let bonus: { bonus: number; streak: number } | undefined;
+    let bonus: { bonus: number; streak: number; froze?: boolean } | undefined;
     if (status === "completed" && quest) {
       const day = startOfDay(new Date(quest.start_at));
       const { data: claim } = await supabase.rpc("claim_daily_bonus", {
@@ -490,7 +506,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         p_end: addDays(day, 1).toISOString(),
       });
       if (claim) {
-        bonus = claim as { bonus: number; streak: number; total_xp: number };
+        bonus = claim as { bonus: number; streak: number; total_xp: number; froze?: boolean };
         newTotal = (claim as { total_xp: number }).total_xp;
       }
     }
@@ -505,12 +521,33 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         newLevel: after > before ? after : undefined,
         bonus: bonus?.bonus,
         streak: bonus?.streak,
+        froze: bonus?.froze,
       });
+      announceAchievements();
     } else if (status === "failed" && quest) {
       showToast({ failed: quest.title, lost });
     }
     setDraft(null);
     refresh();
+  }
+
+  /** After completing a quest: show any achievement it unlocked (one at a time). */
+  async function announceAchievements() {
+    try {
+      const history = await loadHistory(supabase, addDays(new Date(), 1));
+      const { data: p } = await supabase.from("profiles").select("total_xp").single();
+      const earned = takeNewAchievements(
+        computeAchievements({ ...history, totalXp: (p as { total_xp: number } | null)?.total_xp ?? profile.total_xp }),
+      );
+      earned.forEach((a, i) =>
+        setTimeout(() => {
+          setBadge(a);
+          setTimeout(() => setBadge((cur) => (cur === a ? null : cur)), 5000);
+        }, 1500 + i * 5500),
+      );
+    } catch {
+      // Achievements are a bonus; never block completing a quest.
+    }
   }
 
   function showToast(t: Toast) {
@@ -722,7 +759,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             <span className="font-medium">{profile.username}</span>
             <span className="flex items-center gap-1">
               <span
-                title={`${streak.current}-day streak (best: ${streak.best})`}
+                title={describeStreak(streak)}
                 className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
                   streak.current ? "bg-gold-soft text-gold" : "bg-surface text-faint"
                 }`}
@@ -857,6 +894,12 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         </div>
 
         <div>
+          <Link
+            href="/insights"
+            className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink"
+          >
+            <ChartColumnBig size={14} /> Insights &amp; achievements
+          </Link>
           <Link
             href="/settings"
             className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink"
@@ -1035,9 +1078,13 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           >
             <Plus size={26} />
           </button>
-          <NavItem label="Summary" onClick={() => setSummary({ day: date })}>
-            <NotebookText size={20} />
-          </NavItem>
+          <Link
+            href="/insights"
+            className="flex flex-col items-center gap-0.5 text-[10px] font-medium text-muted"
+          >
+            <ChartColumnBig size={20} />
+            Insights
+          </Link>
           <Link
             href="/settings"
             className="flex flex-col items-center gap-0.5 text-[10px] font-medium text-muted"
@@ -1121,6 +1168,11 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                   <Flame size={14} /> Daily goal reached! +{toast.bonus} XP · {toast.streak}-day streak
                 </p>
               )}
+              {toast.froze && (
+                <p className="mt-1 flex items-center gap-1 text-xs font-medium text-accent">
+                  <Snowflake size={12} /> Streak freeze covered yesterday — streak saved
+                </p>
+              )}
               {toast.newLevel && (
                 <p className="mt-1 text-sm font-semibold text-accent">
                   Level up! You&apos;re now Lv {toast.newLevel} 🎉
@@ -1129,6 +1181,20 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             </>
           )}
         </div>
+      )}
+
+      {badge && (
+        <Link
+          href="/insights"
+          className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[60] flex animate-[toast-in_300ms_ease-out] items-center gap-3 rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-80"
+        >
+          <BadgeIcon achievement={badge} size={44} />
+          <span className="min-w-0">
+            <span className="block text-[11px] font-medium uppercase tracking-wide text-gold">Achievement unlocked</span>
+            <span className="block truncate text-sm font-semibold">{badge.title}</span>
+            <span className="block truncate text-xs text-muted">{badge.description}</span>
+          </span>
+        </Link>
       )}
     </div>
   );

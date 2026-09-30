@@ -22,6 +22,10 @@ export type Quest = {
   /** "deadline" = a due-date marker from a calendar (no XP), otherwise a normal quest. */
   kind?: "task" | "deadline";
   all_day?: boolean;
+  /** When it was marked complete (from 013_insights_streak_freeze.sql). */
+  completed_at?: string | null;
+  /** Minutes actually worked, for quests completed with the timer running. */
+  worked_min?: number | null;
 };
 
 /** A subscribed calendar feed shown as its own layer. */

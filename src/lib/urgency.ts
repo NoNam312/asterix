@@ -40,7 +40,7 @@ export type Deadline = {
   calendarId: string | null;
 };
 
-type Subject = { code: string; name: string; tokens: string[]; area: string | null };
+export type Subject = { code: string; name: string; tokens: string[]; area: string | null };
 
 export type UrgencyContext = { deadlines: Deadline[]; subjects: Map<string, Subject> };
 
@@ -87,6 +87,23 @@ export function subjectFromTitle(title: string): { code: string; name: string } 
     if (tokens(name).length) return { code: m[1], name };
   }
   return null;
+}
+
+/** Subjects (code → name) learnt from class titles that carry both. */
+export function buildSubjectIndex(titles: string[]) {
+  const subjects = new Map<string, Subject>();
+  for (const title of titles) {
+    const s = subjectFromTitle(title);
+    if (!s || subjects.has(s.code)) continue;
+    subjects.set(s.code, { ...s, tokens: tokens(s.name), area: subjectArea(s.name) });
+  }
+  return subjects;
+}
+
+/** The subject a quest title is about: a known subject's name, a bare code, or null. */
+export function subjectOfTitle(title: string, subjects: Map<string, Subject>) {
+  const code = [...codesIn(title, subjects)][0];
+  return code ? (subjects.get(code)?.name ?? code) : null;
 }
 
 function subjectArea(text: string) {
@@ -142,12 +159,7 @@ export function estimateNeed(title: string): { kind: TargetKind; minutes: number
  * (imported or your own). `subjectTitles` are extra class titles, e.g. from skipped series.
  */
 export function buildUrgencyContext(quests: QuestLike[], subjectTitles: string[] = []): UrgencyContext {
-  const subjects = new Map<string, Subject>();
-  for (const title of [...subjectTitles, ...quests.filter((q) => q.calendar_id).map((q) => q.title)]) {
-    const s = subjectFromTitle(title);
-    if (!s || subjects.has(s.code)) continue;
-    subjects.set(s.code, { ...s, tokens: tokens(s.name), area: subjectArea(s.name) });
-  }
+  const subjects = buildSubjectIndex([...subjectTitles, ...quests.filter((q) => q.calendar_id).map((q) => q.title)]);
 
   const deadlines: Deadline[] = [];
   for (const q of quests) {
