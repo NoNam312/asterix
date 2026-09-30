@@ -1,32 +1,79 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bell, Palette, SquareKanban, Download, KeyRound, Smartphone, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  Clock,
+  Download,
+  KeyRound,
+  ListChecks,
+  Lock,
+  LogOut,
+  MessageCircle,
+  Palette,
+  Puzzle,
+  ShieldAlert,
+  Smartphone,
+  SquareKanban,
+  Tags,
+  Target,
+  X,
+} from "lucide-react";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
 import { IphoneLock } from "./iphone-lock";
 import { AppearanceSettings } from "./appearance-settings";
 import { JiraSettings } from "./jira-settings";
+import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/client";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type LockMode } from "@/lib/quests";
 
-const LOCK_MODES: { value: LockMode; title: string; description: string }[] = [
+const LOCK_MODES: { value: LockMode; title: string; description: string; icon: typeof Clock }[] = [
   {
     value: "during_quests",
-    title: "Only during quests",
-    description: "Apps lock while a quest or class is happening. Between quests and at night they're free.",
+    title: "During quests",
+    description: "Locked while a quest or class is on. Free between quests and at night.",
+    icon: Clock,
   },
   {
     value: "until_done",
-    title: "Until today's quests are done",
-    description: "Apps stay locked while you still have quests left today, and unlock after the last one ends.",
+    title: "Until quests are done",
+    description: "Locked while you still have quests left today; free after the last one ends.",
+    icon: ListChecks,
   },
   {
     value: "all_day",
     title: "All day until the goal",
-    description: "Strict: apps stay locked all day until you reach your daily XP goal.",
+    description: "Strict: locked all day until you reach your daily XP goal.",
+    icon: ShieldAlert,
   },
+];
+
+const GOAL_PRESETS = [100, 200, 300, 500];
+
+/** The page's sections, grouped as in the side menu. */
+const NAV: { group: string; items: { id: string; label: string; icon: typeof Clock }[] }[] = [
+  {
+    group: "General",
+    items: [
+      { id: "appearance", label: "Appearance", icon: Palette },
+      { id: "notifications", label: "Notifications", icon: Bell },
+      { id: "goal", label: "Daily goal", icon: Target },
+    ],
+  },
+  {
+    group: "Focus lock",
+    items: [
+      { id: "lock", label: "Lock rules", icon: Lock },
+      { id: "sites", label: "Sites", icon: MessageCircle },
+      { id: "extension", label: "Chrome extension", icon: Puzzle },
+      { id: "iphone-lock", label: "iPhone lock", icon: Smartphone },
+    ],
+  },
+  { group: "Integrations", items: [{ id: "jira", label: "Jira", icon: SquareKanban }] },
+  { group: "Account", items: [{ id: "account", label: "Account", icon: KeyRound }] },
 ];
 
 type Settings = {
@@ -56,6 +103,8 @@ export function SettingsForm({
   const [status, setStatus] = useState<{ error?: string; ok?: boolean }>({});
   const [saving, setSaving] = useState(false);
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
+  const active = useActiveSection();
+  const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setSettings((s) => ({ ...s, [key]: value }));
 
   async function save() {
     setSaving(true);
@@ -66,246 +115,368 @@ export function SettingsForm({
     if (error) return setStatus({ error: error.message });
     setSaved(settings);
     setStatus({ ok: true });
+    setTimeout(() => setStatus((s) => (s.ok ? {} : s)), 2500);
   }
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-10">
-      <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
-        <ArrowLeft size={14} /> Back to planner
-      </Link>
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-muted">
-        Signed in as <span className="font-medium text-ink">{email}</span>
-      </p>
-
-      {needsMigration && (
-        <p className="mt-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
-          Run <code>supabase/005_focus_lock.sql</code> in the Supabase SQL editor to enable these
-          settings.
-        </p>
-      )}
-
-      <Section id="appearance" icon={<Palette size={16} />} title="Appearance">
-        <p className="mb-3 text-sm text-muted">Saved on this device, so your phone and laptop can differ.</p>
-        <AppearanceSettings />
-      </Section>
-
-      <Section id="notifications" icon={<Bell size={16} />} title="Notifications">
-        <p className="mb-3 text-sm text-muted">
-          Get a reminder on your phone before quests and classes start, when time is up, and before due dates.
-        </p>
-        <NotificationSettings initial={notificationPrefs} />
-      </Section>
-
-      <Section id="jira" icon={<SquareKanban size={16} />} title="Jira">
-        <p className="mb-3 text-sm text-muted">
-          See the Jira issues assigned to you (with due dates) in the planner, and drag them onto your calendar to
-          plan when to work on them.
-        </p>
-        <JiraSettings />
-      </Section>
-
-      <Section icon={<Target size={16} />} title="Daily XP goal">
-        <p className="text-sm text-muted">
-          Reaching this unlocks your blocked sites for the rest of the day and keeps your streak going.
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <input
-            type="range"
-            min={50}
-            max={1000}
-            step={50}
-            value={Math.min(settings.daily_xp_goal, 1000)}
-            onChange={(e) => setSettings((s) => ({ ...s, daily_xp_goal: Number(e.target.value) }))}
-            className="flex-1 accent-[var(--color-accent)]"
-          />
-          <span className="w-20 text-right font-semibold tabular-nums">{settings.daily_xp_goal} XP</span>
+    <div className="min-h-screen bg-surface text-ink">
+      <header className="sticky top-0 z-20 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <Link href="/" className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted hover:bg-surface hover:text-ink">
+            <ArrowLeft size={15} /> <span className="hidden sm:inline">Planner</span>
+          </Link>
+          <h1 className="text-lg font-semibold">Settings</h1>
+          <span className="ml-auto hidden truncate text-xs text-muted sm:block">{email}</span>
         </div>
-        <p className="mt-1 text-xs text-faint">
-          About {Math.round(settings.daily_xp_goal / 60)} hours of medium-difficulty quests.
-        </p>
-      </Section>
-
-      <Section icon={<Lock size={16} />} title="When should QuestLog lock apps?">
-        <p className="text-sm text-muted">
-          Applies to the Chrome extension and the iPhone lock. Reaching your daily goal or an emergency unlock always unlocks
-          everything.
-        </p>
-        <div className="mt-3 space-y-2">
-          {LOCK_MODES.map((m) => (
-            <label
-              key={m.value}
-              className={`flex cursor-pointer gap-3 rounded-lg border px-3 py-2.5 transition ${
-                settings.lock_mode === m.value ? "border-accent bg-accent-soft/50" : "border-line hover:bg-surface"
+        {/* Phones: sections as a scrollable row of tabs */}
+        <nav className="flex gap-1 overflow-x-auto px-4 pb-2 [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
+          {NAV.flatMap((g) => g.items).map((item) => (
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition ${
+                active === item.id ? "bg-accent text-white" : "bg-surface text-muted"
               }`}
             >
-              <input
-                type="radio"
-                name="lock_mode"
-                checked={settings.lock_mode === m.value}
-                onChange={() => setSettings((s) => ({ ...s, lock_mode: m.value }))}
-                className="mt-1 accent-[var(--color-accent)]"
-              />
-              <span>
-                <span className="block text-sm font-medium">{m.title}</span>
-                <span className="block text-xs text-muted">{m.description}</span>
-              </span>
-            </label>
+              {item.label}
+            </a>
           ))}
-        </div>
-      </Section>
+        </nav>
+      </header>
 
-      <Section icon={<Lock size={16} />} title="Which quests lock your apps?">
-        <p className="text-sm text-muted">
-          Only these kinds of quests count. Classes imported from your timetable count as Study.
-          {settings.lock_mode === "all_day" && " (Doesn't apply to “All day until the goal”, which is always strict.)"}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {CATEGORY_KEYS.map((key) => {
-            const cat = CATEGORIES[key];
-            const on = settings.lock_categories.includes(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={on}
-                onClick={() =>
-                  setSettings((s) => ({
-                    ...s,
-                    lock_categories: on ? s.lock_categories.filter((c) => c !== key) : [...s.lock_categories, key],
-                  }))
-                }
-                className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition"
-                style={
-                  on
-                    ? { background: cat.soft, borderColor: cat.color, color: cat.color }
-                    : { borderColor: "var(--color-line)", color: "var(--color-muted)" }
-                }
+      <div className="mx-auto grid max-w-5xl gap-8 px-4 py-6 lg:grid-cols-[190px_minmax(0,1fr)]">
+        {/* Laptop: sticky side menu */}
+        <nav className="sticky top-20 hidden self-start lg:block">
+          {NAV.map((g) => (
+            <div key={g.group} className="mb-4">
+              <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{g.group}</p>
+              <ul className="mt-1 space-y-0.5">
+                {g.items.map(({ id, label, icon: Icon }) => (
+                  <li key={id}>
+                    <a
+                      href={`#${id}`}
+                      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition ${
+                        active === id ? "bg-canvas font-medium text-ink shadow-sm" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      <Icon size={14} className={active === id ? "text-accent" : ""} /> {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+
+        <main className="min-w-0 space-y-8 pb-24">
+          {needsMigration && (
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+              Run <code>supabase/005_focus_lock.sql</code> in the Supabase SQL editor to enable these settings.
+            </p>
+          )}
+
+          <Group title="General">
+            <Card id="appearance" icon={Palette} title="Appearance" description="Saved on this device, so your phone and laptop can differ.">
+              <AppearanceSettings />
+            </Card>
+
+            <Card
+              id="notifications"
+              icon={Bell}
+              title="Notifications"
+              description="Reminders on your phone before quests and classes start, when time is up, and before due dates."
+            >
+              <NotificationSettings initial={notificationPrefs} />
+            </Card>
+
+            <Card
+              id="goal"
+              icon={Target}
+              title="Daily XP goal"
+              description="Reaching it unlocks your apps for the rest of the day and keeps your streak going."
+            >
+              <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+                <p className="text-4xl font-semibold tabular-nums">
+                  {settings.daily_xp_goal}
+                  <span className="ml-1 text-base font-normal text-muted">XP / day</span>
+                </p>
+                <div className="flex gap-1.5">
+                  {GOAL_PRESETS.map((xp) => (
+                    <button
+                      key={xp}
+                      type="button"
+                      onClick={() => set("daily_xp_goal", xp)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        settings.daily_xp_goal === xp ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:bg-surface"
+                      }`}
+                    >
+                      {xp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                type="range"
+                min={50}
+                max={1000}
+                step={50}
+                value={Math.min(settings.daily_xp_goal, 1000)}
+                onChange={(e) => set("daily_xp_goal", Number(e.target.value))}
+                className="mt-4 w-full accent-[var(--color-accent)]"
+                aria-label="Daily XP goal"
+              />
+              <p className="mt-1 text-xs text-faint">
+                About {Math.max(1, Math.round(settings.daily_xp_goal / 60))} hour
+                {Math.round(settings.daily_xp_goal / 60) === 1 ? "" : "s"} of medium-difficulty quests.
+              </p>
+            </Card>
+          </Group>
+
+          <Group title="Focus lock">
+            <Card
+              id="lock"
+              icon={Lock}
+              title="Lock rules"
+              description="For the Chrome extension and the iPhone lock. Reaching your goal or an emergency unlock always unlocks everything."
+            >
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">When</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {LOCK_MODES.map(({ value, title, description, icon: Icon }) => {
+                  const on = settings.lock_mode === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => set("lock_mode", value)}
+                      className={`rounded-lg border p-3 text-left transition ${
+                        on ? "border-accent bg-accent-soft/60 ring-1 ring-accent" : "border-line hover:bg-surface"
+                      }`}
+                    >
+                      <Icon size={16} className={on ? "text-accent" : "text-muted"} />
+                      <span className="mt-2 block text-sm font-medium">{title}</span>
+                      <span className="mt-0.5 block text-xs text-muted">{description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="mb-2 mt-5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                <Tags size={12} /> Which quests count
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_KEYS.map((key) => {
+                  const cat = CATEGORIES[key];
+                  const on = settings.lock_categories.includes(key);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() =>
+                        set("lock_categories", on ? settings.lock_categories.filter((c) => c !== key) : [...settings.lock_categories, key])
+                      }
+                      className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition"
+                      style={
+                        on
+                          ? { background: cat.soft, borderColor: cat.color, color: cat.color }
+                          : { borderColor: "var(--color-line)", color: "var(--color-muted)" }
+                      }
+                    >
+                      <span
+                        className="grid size-4 place-items-center rounded border text-[10px]"
+                        style={{ borderColor: on ? cat.color : "var(--color-line)", background: on ? cat.color : "transparent", color: "white" }}
+                      >
+                        {on && "✓"}
+                      </span>
+                      {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-faint">
+                Classes from your timetable count as Study.
+                {settings.lock_mode === "all_day" && " “All day until the goal” ignores this and is always strict."}
+              </p>
+              {settings.lock_categories.length === 0 && settings.lock_mode !== "all_day" && (
+                <p className="mt-1 text-xs text-danger">With nothing ticked, your apps will never be locked.</p>
+              )}
+            </Card>
+
+            <Card id="sites" icon={MessageCircle} title="Sites" description="What gets locked, and what stays open so you can still reply to messages.">
+              <p className="text-sm font-medium">Blocked</p>
+              <p className="text-xs text-muted">Subdomains are included: blocking youtube.com also blocks m.youtube.com.</p>
+              <ListEditor items={settings.blocked_sites} placeholder="Add a site, e.g. youtube.com" onChange={(v) => set("blocked_sites", v)} />
+              <p className="mt-5 text-sm font-medium">Always allowed</p>
+              <p className="text-xs text-muted">Pages that stay open even on blocked sites.</p>
+              <ListEditor items={settings.allowed_urls} placeholder="Add a page, e.g. instagram.com/direct" onChange={(v) => set("allowed_urls", v)} />
+            </Card>
+
+            <Card
+              id="extension"
+              icon={Puzzle}
+              title="Chrome extension"
+              description="Install it in every computer and Chrome profile you use; websites can't install extensions for you."
+            >
+              <a
+                href="/questlog-extension.zip"
+                download
+                className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
               >
-                <span
-                  className="grid size-4 place-items-center rounded border text-[10px]"
-                  style={{ borderColor: on ? cat.color : "var(--color-line)", background: on ? cat.color : "transparent", color: "white" }}
-                >
-                  {on && "✓"}
-                </span>
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
-        {settings.lock_categories.length === 0 && settings.lock_mode !== "all_day" && (
-          <p className="mt-2 text-xs text-danger">With nothing ticked, your apps will never be locked.</p>
-        )}
-      </Section>
+                <Download size={15} /> Download extension (.zip)
+              </a>
+              <ol className="mt-4 space-y-2 text-sm text-muted">
+                {[
+                  <>
+                    Unzip it (right-click → <strong className="text-ink">Extract All</strong>) and keep the{" "}
+                    <Code>questlog-extension</Code> folder somewhere permanent, like Documents.
+                  </>,
+                  <>
+                    Open <Code>chrome://extensions</Code> and turn on <strong className="text-ink">Developer mode</strong> (top right).
+                  </>,
+                  <>
+                    Click <strong className="text-ink">Load unpacked</strong> and choose the <Code>questlog-extension</Code> folder.
+                  </>,
+                  <>Pin the QuestLog icon, click it, and sign in with this account.</>,
+                ].map((step, i) => (
+                  <li key={i} className="flex gap-3">
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface text-[11px] font-semibold text-ink">
+                      {i + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-3 text-xs text-faint">
+                The badge shows the XP you still need today (✓ = unlocked). Changes here reach the extension within a minute. To
+                update it, download again, replace the folder and click ↻ on its card in <code>chrome://extensions</code>.
+              </p>
+            </Card>
 
-      <Section icon={<Lock size={16} />} title="Blocked sites">
-        <p className="text-sm text-muted">
-          Locked according to the setting above. Subdomains are included (blocking youtube.com also
-          blocks m.youtube.com).
-        </p>
-        <ListEditor
-          items={settings.blocked_sites}
-          placeholder="e.g. youtube.com"
-          onChange={(blocked_sites) => setSettings((s) => ({ ...s, blocked_sites }))}
-        />
-      </Section>
+            <Card
+              id="iphone-lock"
+              icon={Smartphone}
+              title="iPhone app lock"
+              description="Make YouTube, Instagram and other apps open a QuestLog lock page until you reach your goal, using a Shortcuts automation."
+            >
+              <IphoneLock initialToken={lockToken} />
+            </Card>
+          </Group>
 
-      <Section icon={<MessageCircle size={16} />} title="Always allowed (messaging)">
-        <p className="text-sm text-muted">
-          Pages that stay open even on blocked sites, so you can still reply to messages.
-        </p>
-        <ListEditor
-          items={settings.allowed_urls}
-          placeholder="e.g. instagram.com/direct"
-          onChange={(allowed_urls) => setSettings((s) => ({ ...s, allowed_urls }))}
-        />
-      </Section>
+          <Group title="Integrations">
+            <Card
+              id="jira"
+              icon={SquareKanban}
+              title="Jira"
+              description="See issues assigned to you, with due dates, in the planner and drag them onto your calendar."
+            >
+              <JiraSettings />
+            </Card>
+          </Group>
 
-      <div className="sticky bottom-0 mt-6 flex items-center gap-3 border-t border-line bg-canvas py-4">
-        <button
-          onClick={save}
-          disabled={!dirty || saving || needsMigration}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-        {status.ok && !dirty && <span className="text-sm text-xp">Saved ✓</span>}
-        {status.error && <span className="text-sm text-danger">{status.error}</span>}
+          <Group title="Account">
+            <Card id="account" icon={KeyRound} title="Account" description={`Signed in as ${email}. The password is used for the app and the Chrome extension.`}>
+              <ChangePasswordForm />
+              <form action={signOut} className="mt-5 border-t border-line pt-4">
+                <button className="flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:bg-surface hover:text-ink">
+                  <LogOut size={14} /> Log out
+                </button>
+              </form>
+            </Card>
+          </Group>
+        </main>
       </div>
 
-      <Section id="extension" icon={<Puzzle size={16} />} title="Chrome extension (focus lock)">
-        <p className="text-sm text-muted">
-          Install it in every computer and Chrome profile you use. Extensions are installed per
-          profile, and websites can&apos;t install them for you.
-        </p>
-        <a
-          href="/questlog-extension.zip"
-          download
-          className="mt-3 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
-        >
-          <Download size={15} /> Download extension (.zip)
-        </a>
-        <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-sm text-muted">
-          <li>
-            Unzip it: right-click the downloaded file and choose{" "}
-            <strong className="text-ink">Extract All</strong>. Keep the{" "}
-            <code className="rounded bg-surface px-1 text-ink">questlog-extension</code> folder
-            somewhere permanent (e.g. Documents), not in Downloads, because Chrome needs it to stay.
-          </li>
-          <li>
-            Open <code className="rounded bg-surface px-1 text-ink">chrome://extensions</code> and turn
-            on <strong className="text-ink">Developer mode</strong> (top right).
-          </li>
-          <li>
-            Click <strong className="text-ink">Load unpacked</strong> and choose the{" "}
-            <code className="rounded bg-surface px-1 text-ink">questlog-extension</code> folder.
-          </li>
-          <li>Pin the QuestLog icon, click it, and sign in with this account.</li>
-          <li>The badge shows how much XP you still need today. ✓ means you&apos;re unlocked.</li>
-        </ol>
-        <p className="mt-2 text-xs text-faint">
-          Settings you save here reach the extension within a minute (or click Refresh in its popup).
-          To update the extension later, download it again, replace the folder, and click ↻ on its card
-          in <code>chrome://extensions</code>.
-        </p>
-      </Section>
-
-      <Section id="iphone-lock" icon={<Smartphone size={16} />} title="iPhone app lock">
-        <p className="mb-3 text-sm text-muted">
-          Make YouTube, Instagram and other apps open a QuestLog lock page until you reach your daily goal, using an
-          iPhone Shortcuts automation.
-        </p>
-        <IphoneLock initialToken={lockToken} />
-      </Section>
-
-      <Section icon={<KeyRound size={16} />} title="Change password">
-        <p className="mb-3 text-sm text-muted">Used to log in to the app and the Chrome extension.</p>
-        <ChangePasswordForm />
-      </Section>
-    </main>
+      {/* Appears only when there's something to save. */}
+      {(dirty || status.ok || status.error) && (
+        <div className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 mx-auto flex max-w-md items-center gap-3 rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl">
+          {dirty ? (
+            <>
+              <span className="flex-1 text-sm">{status.error ? <span className="text-danger">{status.error}</span> : "Unsaved changes"}</span>
+              <button
+                onClick={() => {
+                  setSettings(saved);
+                  setStatus({});
+                }}
+                className="rounded-md px-3 py-1.5 text-sm text-muted hover:bg-surface"
+              >
+                Discard
+              </button>
+              <button
+                onClick={save}
+                disabled={saving || needsMigration}
+                className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </>
+          ) : (
+            <span className="text-sm text-xp">Saved ✓</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-function Section({
+/** Which section is on screen, for highlighting the menu. */
+function useActiveSection() {
+  const [active, setActive] = useState(NAV[0].items[0].id);
+  useEffect(() => {
+    const sections = NAV.flatMap((g) => g.items).map((i) => document.getElementById(i.id)).filter(Boolean) as HTMLElement[];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActive(visible[0].target.id);
+      },
+      { rootMargin: "-120px 0px -60% 0px" },
+    );
+    sections.forEach((s) => observer.observe(s));
+    return () => observer.disconnect();
+  }, []);
+  return active;
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-faint">{title}</h2>
+      <div className="space-y-4">{children}</div>
+    </div>
+  );
+}
+
+function Card({
   id,
-  icon,
+  icon: Icon,
   title,
+  description,
   children,
 }: {
-  id?: string;
-  icon: React.ReactNode;
+  id: string;
+  icon: typeof Clock;
   title: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="mt-8 scroll-mt-6">
-      <h2 className="flex items-center gap-2 font-semibold">
-        <span className="grid size-7 place-items-center rounded-md bg-surface text-muted">{icon}</span>
-        {title}
-      </h2>
-      <div className="mt-2">{children}</div>
+    <section id={id} className="scroll-mt-28 rounded-xl border border-line bg-canvas p-5 shadow-sm">
+      <div className="flex gap-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+          <Icon size={17} />
+        </span>
+        <div className="min-w-0">
+          <h3 className="font-semibold">{title}</h3>
+          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
+        </div>
+      </div>
+      <div className="mt-4">{children}</div>
     </section>
   );
+}
+
+function Code({ children }: { children: React.ReactNode }) {
+  return <code className="rounded bg-surface px-1 text-ink">{children}</code>;
 }
 
 function normalize(site: string) {
@@ -336,15 +507,13 @@ function ListEditor({
   }
 
   return (
-    <div className="mt-3 rounded-lg border border-line p-2">
+    <div className="mt-2 rounded-lg border border-line p-2 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent-soft">
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
-          <span
-            key={item}
-            className="flex items-center gap-1 rounded-md bg-surface py-1 pl-2 pr-1 text-sm"
-          >
+          <span key={item} className="flex items-center gap-1 rounded-md bg-surface py-1 pl-2 pr-1 text-sm">
             {item}
             <button
+              type="button"
               aria-label={`Remove ${item}`}
               onClick={() => onChange(items.filter((i) => i !== item))}
               className="rounded p-0.5 text-faint hover:bg-surface-hover hover:text-ink"
@@ -364,7 +533,7 @@ function ListEditor({
           }}
           onBlur={add}
           placeholder={placeholder}
-          className="min-w-40 flex-1 px-2 py-1 text-sm outline-none placeholder:text-faint"
+          className="min-w-40 flex-1 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-faint"
         />
       </div>
     </div>
