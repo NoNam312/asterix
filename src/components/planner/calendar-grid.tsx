@@ -15,6 +15,7 @@ import { xpFor } from "@/lib/difficulty";
 import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
+import { JIRA_DRAG_TYPE, type JiraIssue } from "@/lib/jira-issues";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
@@ -33,6 +34,8 @@ type Props = {
   onSlotMenu: (start: Date, x: number, y: number) => void;
   /** Subscribed calendar layers, for colouring imported events. */
   layers: Map<string, CalendarLayer>;
+  /** A Jira issue dragged from the sidebar and dropped at a time. */
+  onDropIssue?: (issue: JiraIssue, start: Date) => void;
 };
 
 
@@ -56,10 +59,13 @@ export function CalendarGrid({
   onQuestMenu,
   onSlotMenu,
   layers,
+  onDropIssue,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  // Where a dragged Jira issue would land: day index and minutes after midnight.
+  const [dropAt, setDropAt] = useState<{ day: number; minutes: number } | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const cancelPressRef = useRef<(() => void) | null>(null);
   const lastPointerRef = useRef<string>("mouse");
@@ -195,6 +201,14 @@ export function CalendarGrid({
     return addMinutes(startOfDay(day), minutes);
   }
 
+  /** Minutes after midnight under the pointer, in 15-minute steps. */
+  function dropMinutes(e: React.DragEvent<HTMLDivElement>) {
+    const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+    return clamp(Math.floor((y / HOUR_HEIGHT) * 4) * 15, 0, 23 * 60 + 45);
+  }
+
+  const acceptsIssue = (e: React.DragEvent) => !!onDropIssue && e.dataTransfer.types.includes(JIRA_DRAG_TYPE);
+
   function handleColumnClick(e: React.MouseEvent<HTMLDivElement>, day: Date) {
     if (e.target !== e.currentTarget) return;
     onCreate(slotAt(e, day));
@@ -274,7 +288,7 @@ export function CalendarGrid({
           </div>
 
           <div ref={columnsRef} className={`flex flex-1 ${drag ? "cursor-grabbing select-none" : ""}`}>
-            {days.map((day) => {
+            {days.map((day, dayIndex) => {
               const onDay = shown.filter((q) => isSameDay(new Date(q.start_at), day));
               const dayQuests = onDay.filter((q) => !isDeadline(q));
               const deadlines = onDay.filter((q) => isDeadline(q) && !q.all_day);
@@ -284,8 +298,34 @@ export function CalendarGrid({
                   key={day.toISOString()}
                   onClick={(e) => handleColumnClick(e, day)}
                   onContextMenu={(e) => handleColumnMenu(e, day)}
+                  onDragOver={(e) => {
+                    if (!acceptsIssue(e)) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                    const minutes = dropMinutes(e);
+                    setDropAt((cur) => (cur?.day === dayIndex && cur.minutes === minutes ? cur : { day: dayIndex, minutes }));
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropAt(null);
+                  }}
+                  onDrop={(e) => {
+                    const raw = e.dataTransfer.getData(JIRA_DRAG_TYPE);
+                    setDropAt(null);
+                    if (!raw || !onDropIssue) return;
+                    e.preventDefault();
+                    haptic();
+                    onDropIssue(JSON.parse(raw) as JiraIssue, addMinutes(startOfDay(day), dropMinutes(e)));
+                  }}
                   className="relative min-w-0 flex-1 cursor-cell border-l border-line"
                 >
+                  {dropAt?.day === dayIndex && (
+                    <div
+                      className="pointer-events-none absolute inset-x-1 z-30 rounded-md border-2 border-dashed border-accent bg-accent-soft/60 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+                      style={{ top: (dropAt.minutes / 60) * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                    >
+                      {formatTime(addMinutes(startOfDay(day), dropAt.minutes))}
+                    </div>
+                  )}
                   {HOURS.map((h) => (
                     <div
                       key={h}

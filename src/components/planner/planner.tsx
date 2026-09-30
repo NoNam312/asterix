@@ -90,6 +90,8 @@ import { dayKey, useQuestCache } from "./use-quest-cache";
 import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
+import { JiraPanel } from "./jira-panel";
+import { jiraKeyOf, questFromIssue, type JiraIssue } from "@/lib/jira-issues";
 import { BadgeIcon } from "@/components/insights/achievement-badge";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -161,6 +163,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [seriesById, setSeriesById] = useState<Map<string, QuestSeries>>(new Map());
   const [canRepeat, setCanRepeat] = useState(false);
+  const [jira, setJira] = useState<{ issues: JiraIssue[]; error?: string } | null>(null);
 
   const days = useMemo(
     () =>
@@ -297,6 +300,30 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     for (const [id, change] of changes) supabase.from("quests").update(change).eq("id", id).then();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
   }, [metaLoaded, days, byDay, todayKey, urgency, supabase]);
+
+  // Once per visit: Jira issues assigned to you (only if Jira is connected in Settings).
+  useEffect(() => {
+    fetch("/api/jira")
+      .then((r) => r.json())
+      .then((res) => setJira(res.connected ? { issues: res.issues ?? [], error: res.error } : null))
+      .catch(() => undefined);
+  }, []);
+
+  // When each Jira issue is next planned as a quest (from the days already loaded).
+  const jiraPlanned = useMemo(() => {
+    const next = new Map<string, Date>();
+    for (const [day, qs] of Object.entries(byDay)) {
+      if (day < todayKey) continue; // "YYYY-MM-DD" sorts by date
+      for (const q of qs) {
+        const key = q.status === "planned" || q.status === "active" ? jiraKeyOf(q.notes) : null;
+        if (!key) continue;
+        const start = new Date(q.start_at);
+        const cur = next.get(key);
+        if (!cur || start < cur) next.set(key, start);
+      }
+    }
+    return next;
+  }, [byDay, todayKey]);
 
   // Once per visit: add the next days of each repeating quest (they're created 4 weeks ahead).
   const repeatsExtended = useRef(false);
@@ -460,6 +487,32 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       recurrenceId: q.recurrence_id ?? null,
       repeat: repeat ?? (q.recurrence_id ? (seriesById.get(q.recurrence_id)?.weekdays ?? null) : null),
     });
+  }
+
+  /** Click a Jira issue: open it as a new quest to choose when to work on it. */
+  function planIssue(issue: JiraIssue) {
+    const { title, notes, duration } = questFromIssue(issue);
+    const start = nextHalfHour(date);
+    const category = scoreQuest({ title, notes, category: "study", durationMin: duration, start }, urgency).suggestedCategory ?? "study";
+    setDraft({ title, notes, duration, category, date: toDateInput(start), time: toTimeInput(start), status: "planned" });
+  }
+
+  /** Drop a Jira issue on the calendar: it becomes a quest at that time straight away. */
+  async function dropIssue(issue: JiraIssue, start: Date) {
+    const { title, notes, duration } = questFromIssue(issue);
+    const guess = scoreQuest({ title, notes, category: "study", durationMin: duration, start }, urgency);
+    const category = guess.suggestedCategory ?? "study";
+    const { rank, xp } = scoreQuest({ title, notes, category, durationMin: duration, start }, urgency);
+    const { data, error } = await supabase
+      .from("quests")
+      .insert({ title, notes, category, start_at: start.toISOString(), duration_min: duration, difficulty: rank, xp })
+      .select("id")
+      .single();
+    if (error) return setError(error.message);
+    pushUndo(`Planned ${issue.key} for ${start.toLocaleDateString([], { weekday: "short" })} ${formatTime(start)}`, () =>
+      supabase.from("quests").delete().eq("id", data.id),
+    );
+    refresh();
   }
 
   const repeatDraft = (d: QuestDraft): Omit<RepeatDraft, "weekdays"> => ({
@@ -990,6 +1043,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
         <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
 
+        {jira && <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} />}
+
         <div className="min-h-0 flex-1 overflow-y-auto">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">
             Today&apos;s quests
@@ -1163,6 +1218,11 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               onStatus={runStatus}
               onNew={() => openNew(nextHalfHour(date))}
             />
+            {jira && (
+              <div className="border-t border-line px-3 py-3">
+                <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} draggable={false} />
+              </div>
+            )}
             {dueSoon.length > 0 && (
               <div className="border-t border-line px-3 py-3">
                 <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
@@ -1176,6 +1236,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             onCreate={openNew}
             onEdit={openEdit}
             onReschedule={reschedule}
+            onDropIssue={dropIssue}
             onQuestMenu={(quest, x, y) => setMenu({ kind: "quest", quest, x, y })}
             onSlotMenu={(start, x, y) => setMenu({ kind: "slot", start, x, y })}
             layers={layerMap}

@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bell, Palette, Download, KeyRound, Smartphone, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
+import { ArrowLeft, Bell, Palette, SquareKanban, Download, KeyRound, Smartphone, Lock, MessageCircle, Puzzle, Target, X } from "lucide-react";
 import { ChangePasswordForm } from "@/components/change-password-form";
 import { NotificationSettings, type NotificationPrefs } from "./notification-settings";
 import { IphoneLock } from "./iphone-lock";
 import { AppearanceSettings } from "./appearance-settings";
+import { JiraSettings } from "./jira-settings";
 import { createClient } from "@/lib/supabase/client";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type LockMode } from "@/lib/quests";
 
@@ -94,6 +95,14 @@ export function SettingsForm({
           Get a reminder on your phone before quests and classes start, when time is up, and before due dates.
         </p>
         <NotificationSettings initial={notificationPrefs} />
+      </Section>
+
+      <Section id="jira" icon={<SquareKanban size={16} />} title="Jira">
+        <p className="mb-3 text-sm text-muted">
+          See the Jira issues assigned to you (with due dates) in the planner, and drag them onto your calendar to
+          plan when to work on them.
+        </p>
+        <JiraSettings />
       </Section>
 
       <Section icon={<Target size={16} />} title="Daily XP goal">
