@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 
 export type MenuItem =
   | {
@@ -12,7 +13,9 @@ export type MenuItem =
       onSelect: () => void;
     }
   | { separator: true }
-  | { custom: React.ReactNode };
+  | { custom: React.ReactNode }
+  /** Opens a second menu beside this one (e.g. Jira statuses); `close` closes both. */
+  | { label: string; icon?: React.ReactNode; hint?: string; submenu: (close: () => void) => React.ReactNode };
 
 type Props = {
   x: number;
@@ -26,15 +29,17 @@ type Props = {
 export function ContextMenu({ x, y, title, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
+  const [openSub, setOpenSub] = useState<number | null>(null);
+  // Second menus open to the right, or to the left when there's no room.
+  const [subLeft, setSubLeft] = useState(false);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
-    setPos({
-      left: Math.min(x, window.innerWidth - width - 8),
-      top: Math.min(y, window.innerHeight - height - 8),
-    });
+    const left = Math.min(x, window.innerWidth - width - 8);
+    setPos({ left, top: Math.min(y, window.innerHeight - height - 8) });
+    setSubLeft(left + width + 240 > window.innerWidth);
   }, [x, y]);
 
   useEffect(() => {
@@ -71,10 +76,40 @@ export function ContextMenu({ x, y, title, items, onClose }: Props) {
       {items.map((item, i) => {
         if ("separator" in item) return <div key={i} className="my-1 h-px bg-line" />;
         if ("custom" in item) return <div key={i}>{item.custom}</div>;
+        if ("submenu" in item) {
+          const open = openSub === i;
+          return (
+            <div key={i} className="relative" onMouseEnter={() => setOpenSub(i)}>
+              <button
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={() => setOpenSub(open ? null : i)}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-ink transition hover:bg-surface ${open ? "bg-surface" : ""}`}
+              >
+                <span className="grid w-4 place-items-center text-muted [&>svg]:size-3.5">{item.icon}</span>
+                <span className="flex-1">{item.label}</span>
+                {item.hint && <span className="max-w-24 truncate text-xs text-faint">{item.hint}</span>}
+                <ChevronRight size={13} className="text-faint" />
+              </button>
+              {open && (
+                <div
+                  role="menu"
+                  className={`absolute top-0 z-[71] w-56 rounded-lg border border-line bg-canvas p-1 shadow-xl ${
+                    subLeft ? "right-full mr-1" : "left-full ml-1"
+                  }`}
+                >
+                  {item.submenu(onClose)}
+                </div>
+              )}
+            </div>
+          );
+        }
         return (
           <button
             key={i}
             role="menuitem"
+            onMouseEnter={() => setOpenSub(null)}
             disabled={item.disabled}
             onClick={() => {
               onClose();

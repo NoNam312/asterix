@@ -17,6 +17,16 @@ export function safeTimeZone(tz: unknown) {
   }
 }
 
+/** Location, then (for due dates) the details and link from the calendar, e.g. a Canvas assignment. */
+function eventNotes(e: FeedEvent) {
+  const parts = [
+    e.location && `📍 ${e.location}`,
+    e.isDeadline && e.description,
+    e.isDeadline && e.url && `🔗 ${e.url}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join("\n\n").slice(0, 2000) : null;
+}
+
 function toQuestRow(e: FeedEvent, calendarId: string) {
   const minutes = Math.min(1440, Math.max(5, Math.round((e.end.getTime() - e.start.getTime()) / 60_000)));
   const base = {
@@ -24,7 +34,7 @@ function toQuestRow(e: FeedEvent, calendarId: string) {
     external_uid: e.uid,
     series_key: e.seriesKey,
     title: e.title.slice(0, 200),
-    notes: e.location ? `📍 ${e.location}` : null,
+    notes: eventNotes(e),
     category: "study" as const,
     start_at: e.start.toISOString(),
     all_day: e.allDay,

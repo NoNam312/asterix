@@ -14,6 +14,10 @@ export type FeedEvent = {
   seriesKey: string;
   title: string;
   location?: string;
+  /** Plain-text description (Canvas puts the assignment details here). */
+  description?: string;
+  /** Link back to the event, e.g. the Canvas assignment page. */
+  url?: string;
   start: Date;
   end: Date;
   allDay: boolean;
@@ -93,6 +97,36 @@ export async function fetchFeed(rawUrl: string): Promise<string> {
 const text = (v: ParameterValue | undefined) =>
   (typeof v === "string" ? v : typeof v === "object" && v && "val" in v ? String(v.val) : "").trim();
 
+/** Descriptions can contain HTML and long runs of blank lines; keep readable plain text. */
+function plainText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h\d)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n\s*\n+/g, "\n\n")
+    .trim()
+    .slice(0, 1500);
+}
+
+/** Only http(s) links, so a feed can't smuggle in javascript: URLs. */
+function safeUrl(value: unknown) {
+  const raw = typeof value === "string" ? value : (value as { val?: unknown } | null)?.val;
+  if (typeof raw !== "string") return undefined;
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function localParts(date: Date, tz: string) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-AU", {
@@ -165,6 +199,8 @@ export function parseFeed(ics: string, tz: string) {
         seriesKey: isDeadline ? DEADLINES_KEY : `${seriesTitle(title)}|${weekday}|${time}|${minutes}`,
         title,
         location: text(inst.event.location as ParameterValue | undefined) || undefined,
+        description: plainText(text(inst.event.description as ParameterValue | undefined)) || undefined,
+        url: safeUrl(inst.event.url as unknown),
         start,
         end,
         allDay,

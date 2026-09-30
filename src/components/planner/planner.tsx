@@ -30,6 +30,7 @@ import {
   Swords,
   Trash2,
   SquareKanban,
+  ExternalLink,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -72,6 +73,7 @@ import {
   CATEGORIES,
   CATEGORY_KEYS,
   dueAt,
+  shortTitle,
   isDeadline,
   type CalendarLayer,
   type Category,
@@ -93,7 +95,10 @@ import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
 import { JiraPanel } from "./jira-panel";
+import { JiraStatusList } from "./jira-status";
+import { DeadlineModal } from "./deadline-modal";
 import { jiraKeyOf, questFromIssue, type JiraIssue } from "@/lib/jira-issues";
+import { blockTitle } from "@/lib/week-planner";
 import { BadgeIcon } from "@/components/insights/achievement-badge";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
@@ -135,7 +140,8 @@ const SIDE_TAB_KEY = "questlog:side-tab";
 
 type Menu =
   | { kind: "quest"; quest: Quest; x: number; y: number }
-  | { kind: "slot"; start: Date; x: number; y: number };
+  | { kind: "slot"; start: Date; x: number; y: number }
+  | { kind: "jira"; issue: JiraIssue; x: number; y: number };
 
 function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const supabase = useMemo(() => createClient(), []);
@@ -144,6 +150,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
+  // Plan week opened from one due date plans just that one.
+  const [planFocus, setPlanFocus] = useState<{ key: string; due: Date } | null>(null);
+  const [deadlineView, setDeadlineView] = useState<Quest | null>(null);
   const [layers, setLayers] = useState<CalendarLayer[]>([]);
   const [dueSoon, setDueSoon] = useState<(DeadlineProgress & { quest: Quest })[]>([]);
   const [urgency, setUrgency] = useState<UrgencyContext>(EMPTY_URGENCY);
@@ -503,8 +512,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   /** Opens a quest; `repeat` pre-fills the Repeat picker (used by "Repeat…" in the menu). */
   function openEdit(q: Quest, repeat?: Weekday[]) {
-    // All-day due dates show as due at the end of that day.
-    const start = isDeadline(q) ? dueAt(q) : new Date(q.start_at);
+    if (isDeadline(q)) return setDeadlineView(q);
+    const start = new Date(q.start_at);
     setDraft({
       id: q.id,
       title: q.title,
@@ -832,8 +841,11 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           : []),
       ];
     }
+    const jiraKey = jira ? jiraKeyOf(q.notes) : null;
+    const issue = jiraKey ? jira?.issues.find((i) => i.key === jiraKey) : undefined;
     return [
       { label: "Open", icon: <Pencil />, onSelect: () => openEdit(q) },
+      ...(jiraKey ? [jiraStatusItem(jiraKey, issue)] : []),
       { separator: true },
       ...(q.status === "planned"
         ? [{ label: "Start quest", icon: <Play />, onSelect: () => runStatus(q.id, "active") }]
@@ -911,6 +923,35 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           ]
         : []),
       { label: "Delete", icon: <Trash2 />, danger: true, onSelect: () => remove(q.id).then((e) => e && setError(e)) },
+    ];
+  }
+
+  /** "Jira status ›": the issue's current status and where it can move to. */
+  function jiraStatusItem(key: string, issue?: JiraIssue): MenuItem {
+    return {
+      label: `Jira status · ${key}`,
+      icon: <SquareKanban />,
+      hint: issue?.status,
+      submenu: (close) => (
+        <JiraStatusList
+          issueKey={key}
+          status={issue?.status}
+          statusCategory={issue?.statusCategory}
+          onChanged={() => {
+            close();
+            loadJira();
+          }}
+        />
+      ),
+    };
+  }
+
+  function jiraMenuItems(issue: JiraIssue): MenuItem[] {
+    return [
+      { label: "Plan as a quest…", icon: <CalendarRange />, onSelect: () => planIssue(issue) },
+      { ...jiraStatusItem(issue.key, issue), label: "Change status" },
+      { separator: true },
+      { label: "Open in Jira", icon: <ExternalLink />, onSelect: () => window.open(issue.url, "_blank", "noopener") },
     ];
   }
 
@@ -1125,7 +1166,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                 <p className="px-1 pt-1 text-xs text-faint">No due dates in the next 3 weeks.</p>
               )
             ) : sideTab === "jira" && jira ? (
-              <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={loadJira} hideTitle />
+              <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={loadJira} onMenu={(issue, x, y) => setMenu({ kind: "jira", issue, x, y })} hideTitle />
             ) : (
               <>
               {todayQuests.length === 0 ? (
@@ -1422,13 +1463,49 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         />
       )}
 
+      {deadlineView && (
+        <DeadlineModal
+          quest={deadlineView}
+          source={deadlineView.calendar_id ? layerMap.get(deadlineView.calendar_id)?.name : undefined}
+          color={deadlineView.calendar_id ? layerMap.get(deadlineView.calendar_id)?.color : undefined}
+          deadline={urgency.deadlines.find((d) => d.id === deadlineView.id)}
+          progress={deadlineProgress(Object.values(byDay).flat(), urgency).find((p) => p.deadline.id === deadlineView.id)}
+          onClose={() => setDeadlineView(null)}
+          onPlanWeek={() => {
+            setPlanFocus({ key: deadlineView.id, due: dueAt(deadlineView) });
+            setDeadlineView(null);
+            setPlanOpen(true);
+          }}
+          onAddSession={() => {
+            const d = urgency.deadlines.find((x) => x.id === deadlineView.id);
+            const start = nextHalfHour(date);
+            const title = blockTitle({ title: deadlineView.title, kind: d?.kind ?? "other" }, d?.subject);
+            setDeadlineView(null);
+            setDraft({
+              title,
+              category: "study",
+              date: toDateInput(start),
+              time: toTimeInput(start),
+              duration: 60,
+              notes: `For “${shortTitle(deadlineView.title)}”. plan:${deadlineView.id}`,
+              status: "planned",
+            });
+          }}
+        />
+      )}
+
       {planOpen && (
         <PlanWeekDialog
           layers={layerMap}
           urgency={urgency}
-          onClose={() => setPlanOpen(false)}
+          focus={planFocus}
+          onClose={() => {
+            setPlanOpen(false);
+            setPlanFocus(null);
+          }}
           onAdded={(ids) => {
             setPlanOpen(false);
+            setPlanFocus(null);
             pushUndo(`Added ${ids.length} study block${ids.length === 1 ? "" : "s"}`, () =>
               supabase.from("quests").delete().in("id", ids),
             );
@@ -1442,8 +1519,14 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           key={`${menu.x},${menu.y}`}
           x={menu.x}
           y={menu.y}
-          title={menu.kind === "quest" ? menu.quest.title : undefined}
-          items={menu.kind === "quest" ? questMenuItems(menu.quest) : slotMenuItems(menu.start)}
+          title={menu.kind === "quest" ? menu.quest.title : menu.kind === "jira" ? `${menu.issue.key}: ${menu.issue.summary}` : undefined}
+          items={
+            menu.kind === "quest"
+              ? questMenuItems(menu.quest)
+              : menu.kind === "jira"
+                ? jiraMenuItems(menu.issue)
+                : slotMenuItems(menu.start)
+          }
           onClose={closeMenu}
         />
       )}

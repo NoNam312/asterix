@@ -1,16 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ExternalLink, GripVertical, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, GripVertical } from "lucide-react";
 import { formatTime, startOfDay } from "@/lib/dates";
 import { dueDate, JIRA_DRAG_TYPE, type JiraIssue } from "@/lib/jira-issues";
+import { JiraStatusList, STATUS_COLORS } from "./jira-status";
 
 const DAY = 86_400_000;
-const STATUS_COLORS: Record<string, string> = {
-  new: "var(--color-faint)",
-  indeterminate: "var(--color-accent)",
-  done: "var(--color-xp)",
-};
 
 function dueLabel(due: string | null) {
   if (!due) return { text: "", urgent: false };
@@ -33,6 +29,7 @@ export function JiraPanel({
   draggable = true,
   hideTitle,
   onStatusChanged,
+  onMenu,
 }: {
   issues: JiraIssue[];
   error?: string;
@@ -44,6 +41,8 @@ export function JiraPanel({
   hideTitle?: boolean;
   /** After the status was changed in Jira. */
   onStatusChanged: (key: string) => void;
+  /** Right-click (or long-press) on an issue. */
+  onMenu?: (issue: JiraIssue, x: number, y: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [statusFor, setStatusFor] = useState<string | null>(null);
@@ -79,6 +78,11 @@ export function JiraPanel({
                 e.dataTransfer.setData(JIRA_DRAG_TYPE, JSON.stringify(issue));
                 e.dataTransfer.setData("text/plain", `${issue.key}: ${issue.summary}`);
                 e.dataTransfer.effectAllowed = "copy";
+              }}
+              onContextMenu={(e) => {
+                if (!onMenu) return;
+                e.preventDefault();
+                onMenu(issue, e.clientX, e.clientY);
               }}
               className="group flex flex-wrap items-center gap-x-1 rounded-md px-1 hover:bg-surface-hover"
             >
@@ -127,14 +131,18 @@ export function JiraPanel({
                 <ExternalLink size={11} />
               </a>
               {statusFor === issue.key && (
-                <StatusMenu
-                  issue={issue}
-                  large={!draggable}
-                  onDone={(changed) => {
-                    setStatusFor(null);
-                    if (changed) onStatusChanged(issue.key);
-                  }}
-                />
+                <div className="mb-1 basis-full rounded-md border border-line bg-canvas p-1 shadow-sm">
+                  <JiraStatusList
+                    issueKey={issue.key}
+                    status={issue.status}
+                    statusCategory={issue.statusCategory}
+                    large={!draggable}
+                    onChanged={() => {
+                      setStatusFor(null);
+                      onStatusChanged(issue.key);
+                    }}
+                  />
+                </div>
               )}
             </li>
           );
@@ -149,59 +157,3 @@ export function JiraPanel({
   );
 }
 
-type Transition = { id: string; name: string; to: string; toCategory: string };
-
-/** The statuses an issue can move to (from Jira's workflow), shown under its row. */
-function StatusMenu({ issue, large, onDone }: { issue: JiraIssue; large: boolean; onDone: (changed: boolean) => void }) {
-  const [options, setOptions] = useState<Transition[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [moving, setMoving] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`/api/jira/transitions?key=${encodeURIComponent(issue.key)}`)
-      .then((r) => r.json())
-      .then((res) => (res.error ? setError(res.error) : setOptions(res.transitions)))
-      .catch(() => setError("Couldn't reach Jira."));
-  }, [issue.key]);
-
-  async function move(t: Transition) {
-    setMoving(t.id);
-    const res = await fetch("/api/jira/transitions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: issue.key, id: t.id }),
-    }).then((r) => r.json()).catch(() => ({ error: "Couldn't reach Jira." }));
-    setMoving(null);
-    if (res.error) return setError(res.error);
-    onDone(true);
-  }
-
-  return (
-    <div className={`mb-1 basis-full rounded-md border border-line bg-canvas p-1 shadow-sm ${large ? "text-sm" : "text-xs"}`}>
-      <p className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-faint">
-        {issue.key} is {issue.status || "open"} · move to
-      </p>
-      {error && <p className="px-1.5 py-1 text-danger">{error}</p>}
-      {!options && !error && (
-        <p className="flex items-center gap-1.5 px-1.5 py-1 text-muted">
-          <Loader2 size={12} className="animate-spin" /> Loading…
-        </p>
-      )}
-      {options?.filter((t) => t.to !== issue.status).map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          disabled={!!moving}
-          onClick={() => move(t)}
-          className={`flex w-full items-center gap-2 rounded px-1.5 text-left hover:bg-surface disabled:opacity-50 ${large ? "py-2" : "py-1"}`}
-        >
-          <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLORS[t.toCategory] ?? STATUS_COLORS.new }} />
-          <span className="flex-1">{t.to}</span>
-          {t.name !== t.to && <span className="text-[10px] text-faint">{t.name}</span>}
-          {moving === t.id && <Loader2 size={12} className="animate-spin text-muted" />}
-        </button>
-      ))}
-      {options?.length === 0 && <p className="px-1.5 py-1 text-muted">No status changes available.</p>}
-    </div>
-  );
-}

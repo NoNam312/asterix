@@ -39,11 +39,14 @@ const hoursLabel = (min: number) => formatDuration(Math.round(min / 15) * 15);
 export function PlanWeekDialog({
   layers,
   urgency,
+  focus,
   onClose,
   onAdded,
 }: {
   layers: Map<string, CalendarLayer>;
   urgency: UrgencyContext;
+  /** Opened from one due date: only that one is ticked, and the plan reaches its due date. */
+  focus?: { key: string; due: Date } | null;
   onClose: () => void;
   onAdded: (ids: string[]) => void;
 }) {
@@ -65,7 +68,8 @@ export function PlanWeekDialog({
   // Load upcoming deadlines/exams, what's already planned, and busy time.
   useEffect(() => {
     const now = new Date();
-    const until = addDays(startOfDay(now), LOOKAHEAD_DAYS);
+    const focusDays = focus ? Math.ceil((focus.due.getTime() - now.getTime()) / 86_400_000) + 1 : 0;
+    const until = addDays(startOfDay(now), Math.max(LOOKAHEAD_DAYS, focusDays));
     supabase
       .from("quests")
       .select("*")
@@ -98,7 +102,9 @@ export function PlanWeekDialog({
             kind: guess.kind,
             minutes: Math.max(0, guess.minutes - already),
             alreadyPlanned: already,
-            selected: due.getTime() - now.getTime() < 8 * 86_400_000 && guess.minutes - already > 0,
+            selected: focus
+              ? q.id === focus.key
+              : due.getTime() - now.getTime() < 8 * 86_400_000 && guess.minutes - already > 0,
             source: q.calendar_id ? (layers.get(q.calendar_id)?.name ?? "Calendar") : "Your quest",
           });
         }
@@ -112,6 +118,7 @@ export function PlanWeekDialog({
             }),
         );
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus is fixed while the dialog is open
   }, [supabase, layers, urgency]);
 
   function update(key: string, patch: Partial<Candidate>) {
