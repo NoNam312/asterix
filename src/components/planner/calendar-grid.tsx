@@ -13,7 +13,7 @@ import type { Rank } from "@/lib/difficulty";
 import { haptic } from "@/lib/haptics";
 import { xpFor } from "@/lib/difficulty";
 import { formatDuration } from "@/lib/dates";
-import { CATEGORIES, isDeadline, type CalendarLayer, type Quest } from "@/lib/quests";
+import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
 
 const HOUR_HEIGHT = 52; // px per hour
@@ -35,11 +35,6 @@ type Props = {
   layers: Map<string, CalendarLayer>;
 };
 
-/** All-day due dates are drawn under the date; they don't have a time. */
-const allDayDate = (q: Quest) => {
-  const d = new Date(q.start_at);
-  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-};
 
 type Drag = {
   quest: Quest;
@@ -233,7 +228,7 @@ export function CalendarGrid({
         {days.map((day) => {
           const today = isSameDay(day, now);
           return (
-            <div key={day.toISOString()} className="flex-1 border-l border-line py-2 text-center">
+            <div key={day.toISOString()} className="min-w-0 flex-1 border-l border-line py-2 text-center">
               <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
                 {day.toLocaleDateString([], { weekday: "short" })}
               </div>
@@ -245,7 +240,7 @@ export function CalendarGrid({
                 {day.getDate()}
               </div>
               {quests
-                .filter((q) => isDeadline(q) && q.all_day && isSameDay(allDayDate(q), day))
+                .filter((q) => isDeadline(q) && q.all_day && isSameDay(dueDay(q), day))
                 .map((q) => (
                   <button
                     key={q.id}
@@ -255,7 +250,7 @@ export function CalendarGrid({
                     style={{ background: `${layerColor(q)}1f`, color: layerColor(q) }}
                   >
                     <Flag size={10} className="shrink-0" />
-                    <span className="truncate">{q.title}</span>
+                    <span className="truncate">{shortTitle(q.title)}</span>
                   </button>
                 ))}
             </div>
@@ -289,7 +284,7 @@ export function CalendarGrid({
                   key={day.toISOString()}
                   onClick={(e) => handleColumnClick(e, day)}
                   onContextMenu={(e) => handleColumnMenu(e, day)}
-                  className="relative flex-1 cursor-cell border-l border-line"
+                  className="relative min-w-0 flex-1 cursor-cell border-l border-line"
                 >
                   {HOURS.map((h) => (
                     <div

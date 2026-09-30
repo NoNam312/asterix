@@ -40,11 +40,20 @@ import {
   toDateInput,
   toTimeInput,
 } from "@/lib/dates";
-import { assessQuest } from "@/lib/difficulty";
+import {
+  buildUrgencyContext,
+  deadlineProgress,
+  EMPTY_URGENCY,
+  scoreQuest,
+  URGENCY_WINDOW_DAYS,
+  type DeadlineProgress,
+  type UrgencyContext,
+} from "@/lib/urgency";
 import { levelInfo } from "@/lib/levels";
 import {
   CATEGORIES,
   CATEGORY_KEYS,
+  dueAt,
   isDeadline,
   type CalendarLayer,
   type Category,
@@ -63,9 +72,25 @@ import { CalendarLayers, syncLayer } from "./calendar-layers";
 import { useUndo } from "./use-undo";
 import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
+import { DueSoon } from "./due-soon";
 import { QuestModal, type QuestDraft } from "./quest-modal";
 
 type View = "day" | "week";
+
+/** How far ahead the sidebar lists due dates. */
+const DUE_SOON_DAYS = 21;
+
+/** A saved quest, in the shape the scorer takes. */
+const scoreInput = (q: Quest) => ({
+  id: q.id,
+  title: q.title,
+  notes: q.notes,
+  category: q.category,
+  durationMin: q.duration_min,
+  start: new Date(q.start_at),
+  calendarId: q.calendar_id,
+  kind: q.kind,
+});
 
 const noopSubscribe = () => () => {};
 
@@ -98,7 +123,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [layers, setLayers] = useState<CalendarLayer[]>([]);
-  const [dueSoon, setDueSoon] = useState<Quest[]>([]);
+  const [dueSoon, setDueSoon] = useState<(DeadlineProgress & { quest: Quest })[]>([]);
+  const [urgency, setUrgency] = useState<UrgencyContext>(EMPTY_URGENCY);
   const layerMap = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
   const [streak, setStreak] = useState<Streak>({ current: 0, best: 0, todayDone: false });
   const [summary, setSummary] = useState<{ day: Date; notice?: MissedNotice } | null>(null);
@@ -144,7 +170,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const rangeEndMs = rangeEnd.getTime();
   const refresh = useCallback(async () => {
     const today = startOfDay(new Date());
-    const [range, todays, active, latestBonus, bestBonus, calendars, deadlines] = await Promise.all([
+    // Deadlines and the work around them, for the deadline bonus and the "Due soon" list.
+    const nearFrom = Math.min(rangeStart.getTime(), addDays(today, -URGENCY_WINDOW_DAYS).getTime());
+    const nearTo = Math.max(rangeEnd.getTime(), addDays(today, DUE_SOON_DAYS).getTime()) + (URGENCY_WINDOW_DAYS + 1) * 86_400_000;
+    const [range, todays, active, latestBonus, bestBonus, calendars, near, series] = await Promise.all([
       fetchRange(rangeStart, rangeEnd),
       fetchRange(today, addDays(today, 1)),
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
@@ -158,27 +187,33 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       supabase
         .from("quests")
         .select("*")
-        .eq("kind", "deadline")
-        .gte("start_at", new Date().toISOString())
-        .lt("start_at", addDays(today, 15).toISOString())
+        .gte("start_at", new Date(nearFrom).toISOString())
+        .lt("start_at", new Date(nearTo).toISOString())
         .order("start_at")
-        .limit(6),
+        .limit(3000),
+      supabase.from("calendar_series").select("title"),
     ]);
     const layerList = (calendars.data ?? []) as CalendarLayer[];
     const hidden = new Set(layerList.filter((l) => !l.visible).map((l) => l.id));
     const shown = (qs: Quest[]) => qs.filter((q) => !q.calendar_id || !hidden.has(q.calendar_id));
     setLayers(layerList);
-    setDueSoon(shown((deadlines.data ?? []) as Quest[]));
-    // Unfinished quests follow the latest scorer; finished ones keep the XP they were settled with.
+    const nearby = shown((near.data ?? []) as Quest[]);
+    const ctx = buildUrgencyContext(nearby, ((series.data ?? []) as { title: string }[]).map((r) => r.title));
+    setUrgency(ctx);
+    const nearbyById = new Map(nearby.map((q) => [q.id, q]));
+    const soon = addDays(today, DUE_SOON_DAYS).getTime();
+    setDueSoon(
+      deadlineProgress(nearby, ctx)
+        .filter((p) => p.deadline.due.getTime() < soon && nearbyById.has(p.deadline.id))
+        .slice(0, 5)
+        .map((p) => ({ ...p, quest: nearbyById.get(p.deadline.id)! })),
+    );
+    // Unfinished quests follow the latest scorer (and deadline bonus); finished ones keep the XP
+    // they were settled with.
     const rescored = new Map<string, Pick<Quest, "difficulty" | "xp">>();
     for (const q of [...range, ...todays]) {
       if (rescored.has(q.id) || isDeadline(q) || (q.status !== "planned" && q.status !== "active")) continue;
-      const { rank, xp } = assessQuest({
-        title: q.title,
-        notes: q.notes,
-        category: q.category,
-        durationMin: q.duration_min,
-      });
+      const { rank, xp } = scoreQuest(scoreInput(q), ctx);
       if (rank !== q.difficulty || xp !== q.xp) rescored.set(q.id, { difficulty: rank, xp });
     }
     if (rescored.size) {
@@ -330,7 +365,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   }
 
   function openEdit(q: Quest) {
-    const start = new Date(q.start_at);
+    // All-day due dates show as due at the end of that day.
+    const start = isDeadline(q) ? dueAt(q) : new Date(q.start_at);
     setDraft({
       id: q.id,
       title: q.title,
@@ -371,12 +407,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   async function save(d: QuestDraft) {
     const finished = d.status === "completed" || d.status === "failed";
-    const { rank, xp } = assessQuest({
-      title: d.title,
-      notes: d.notes,
-      category: d.category,
-      durationMin: d.duration,
-    });
+    const { rank, xp } = scoreQuest(
+      {
+        id: d.id,
+        title: d.title,
+        notes: d.notes,
+        category: d.category,
+        durationMin: d.duration,
+        start: fromInputs(d.date, d.time),
+        calendarId: d.id ? findQuest(d.id)?.calendar_id : null,
+        kind: d.kind,
+      },
+      urgency,
+    );
     const row = {
       title: d.title,
       category: d.category,
@@ -418,12 +461,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     let questXp = quest?.xp ?? 0;
     // Quests made before the quest engine existed have no rank yet; score them first.
     if (quest && !quest.difficulty) {
-      const { rank, xp } = assessQuest({
-        title: quest.title,
-        notes: quest.notes,
-        category: quest.category,
-        durationMin: quest.duration_min,
-      });
+      const { rank, xp } = scoreQuest(scoreInput(quest), urgency);
       const { error } = await supabase.from("quests").update({ difficulty: rank, xp }).eq("id", id);
       if (error) return error.message;
       questXp = xp;
@@ -502,12 +540,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
   async function changeCategory(q: Quest, category: Category) {
     const finished = q.status === "completed" || q.status === "failed";
-    const { rank, xp } = assessQuest({
-      title: q.title,
-      notes: q.notes,
-      category,
-      durationMin: q.duration_min,
-    });
+    const { rank, xp } = scoreQuest({ ...scoreInput(q), category }, urgency);
     const { error } = await supabase
       .from("quests")
       .update({ category, ...(finished ? {} : { difficulty: rank, xp }) })
@@ -636,7 +669,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   // Keyboard shortcuts: T = today, N = new quest, arrows = previous/next, Ctrl/⌘+Z = undo.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (draft || (e.target as HTMLElement).closest("input, textarea, select")) return;
+      if (draft || (e.target instanceof Element && e.target.closest("input, textarea, select"))) return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
         undoLast();
@@ -773,27 +806,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
         <CalendarLayers layers={layers} onChanged={refresh} />
 
-        {dueSoon.length > 0 && (
-          <div>
-            <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">Due soon</h3>
-            <ul className="mt-1 space-y-0.5">
-              {dueSoon.map((q) => (
-                <li key={q.id}>
-                  <button
-                    onClick={() => openEdit(q)}
-                    className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-xs hover:bg-surface-hover"
-                  >
-                    <Flag size={11} className="shrink-0" style={{ color: layerMap.get(q.calendar_id ?? "")?.color }} />
-                    <span className="flex-1 truncate">{q.title}</span>
-                    <span className="shrink-0 text-faint">
-                      {new Date(q.start_at).toLocaleDateString([], { weekday: "short", day: "numeric" })}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">
@@ -974,12 +987,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           className="flex min-h-0 flex-1 flex-col"
         >
         {isMobile && mobileTab === "quests" ? (
-          <MobileQuestList
-            quests={quests.filter((q) => !isDeadline(q))}
-            onOpen={openEdit}
-            onStatus={runStatus}
-            onNew={() => openNew(nextHalfHour(date))}
-          />
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <MobileQuestList
+              quests={quests.filter((q) => !isDeadline(q))}
+              onOpen={openEdit}
+              onStatus={runStatus}
+              onNew={() => openNew(nextHalfHour(date))}
+            />
+            {dueSoon.length > 0 && (
+              <div className="border-t border-line px-3 py-3">
+                <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
+              </div>
+            )}
+          </div>
         ) : (
           <CalendarGrid
             days={days}
@@ -1036,6 +1056,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           onSave={save}
           onDelete={remove}
           onStatus={setStatus}
+          urgency={urgency}
         />
       )}
 
@@ -1051,6 +1072,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       {planOpen && (
         <PlanWeekDialog
           layers={layerMap}
+          urgency={urgency}
           onClose={() => setPlanOpen(false)}
           onAdded={(ids) => {
             setPlanOpen(false);

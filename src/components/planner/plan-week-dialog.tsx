@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarRange, Flag, Loader2, Minus, Plus, TriangleAlert, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDuration, formatTime, startOfDay } from "@/lib/dates";
-import { assessQuest } from "@/lib/difficulty";
-import type { CalendarLayer, Quest } from "@/lib/quests";
+import { dueAt, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
+import { deadlineProgress, estimateNeed, scoreQuest, URGENCY_WINDOW_DAYS, type UrgencyContext } from "@/lib/urgency";
 import {
   blockTitle,
-  classifyTarget,
   DEFAULT_PREFS,
   planWeek,
   type PlanPrefs,
@@ -39,10 +38,12 @@ const hoursLabel = (min: number) => formatDuration(Math.round(min / 15) * 15);
  */
 export function PlanWeekDialog({
   layers,
+  urgency,
   onClose,
   onAdded,
 }: {
   layers: Map<string, CalendarLayer>;
+  urgency: UrgencyContext;
   onClose: () => void;
   onAdded: (ids: string[]) => void;
 }) {
@@ -68,7 +69,8 @@ export function PlanWeekDialog({
     supabase
       .from("quests")
       .select("*")
-      .gte("start_at", startOfDay(now).toISOString())
+      // From two weeks back, so work already done for a deadline counts too.
+      .gte("start_at", addDays(startOfDay(now), -URGENCY_WINDOW_DAYS).toISOString())
       .lt("start_at", until.toISOString())
       .order("start_at")
       .then(({ data, error }) => {
@@ -76,22 +78,18 @@ export function PlanWeekDialog({
         const visible = (q: Quest) => !q.calendar_id || layers.get(q.calendar_id)?.visible !== false;
         const all = ((data ?? []) as Quest[]).filter(visible);
 
-        const planned = new Map<string, number>();
-        for (const q of all) {
-          const match = q.notes?.match(/plan:([\w-]+)/);
-          if (match && q.status !== "failed" && new Date(q.start_at) > now) {
-            planned.set(match[1], (planned.get(match[1]) ?? 0) + q.duration_min);
-          }
-        }
+        // Work already done or planned for each deadline: blocks from earlier plans, and any quest on the same subject.
+        const planned = new Map(
+          deadlineProgress(all, urgency, now).map((p) => [p.deadline.id, p.doneMinutes + p.plannedMinutes]),
+        );
 
         const list: Candidate[] = [];
         for (const q of all) {
-          const due = new Date(q.start_at);
+          const due = isDeadline(q) ? dueAt(q) : new Date(q.start_at);
           if (due <= now) continue;
-          const isDeadline = q.kind === "deadline";
-          const guess = classifyTarget(q.title);
+          const guess = estimateNeed(q.title);
           // Due dates from calendars, plus exams you've put on your calendar yourself.
-          if (!isDeadline && !(guess.kind === "exam" && q.status === "planned")) continue;
+          if (!isDeadline(q) && !(guess.kind === "exam" && q.status === "planned")) continue;
           const already = planned.get(q.id) ?? 0;
           list.push({
             key: q.id,
@@ -107,14 +105,14 @@ export function PlanWeekDialog({
         setCandidates(list);
         setBusyTimes(
           all
-            .filter((q) => q.kind !== "deadline" && q.status !== "failed")
+            .filter((q) => q.kind !== "deadline" && q.status !== "failed" && new Date(q.start_at) >= startOfDay(now))
             .map((q) => {
               const start = new Date(q.start_at).getTime();
               return { start, end: start + q.duration_min * 60_000 };
             }),
         );
       });
-  }, [supabase, layers]);
+  }, [supabase, layers, urgency]);
 
   function update(key: string, patch: Partial<Candidate>) {
     setCandidates((cs) => cs?.map((c) => (c.key === key ? { ...c, ...patch } : c)) ?? null);
@@ -123,7 +121,7 @@ export function PlanWeekDialog({
   function addCustom() {
     if (!custom.title.trim() || !custom.date) return;
     const due = new Date(`${custom.date}T23:59`);
-    const guess = classifyTarget(custom.title);
+    const guess = estimateNeed(custom.title);
     setCandidates((cs) => [
       ...(cs ?? []),
       {
@@ -152,6 +150,11 @@ export function PlanWeekDialog({
   }
 
   const byKey = new Map((candidates ?? []).map((c) => [c.key, c]));
+  const subjectOf = (key: string) => urgency.deadlines.find((d) => d.id === key)?.subject ?? null;
+  const titleFor = (t: Candidate) => blockTitle(t, subjectOf(t.key));
+  /** A block's rank and XP, including the deadline bonus it will get. */
+  const scoreBlock = (t: Candidate, b: PlannedBlock) =>
+    scoreQuest({ title: titleFor(t), notes: planRef(t.key), category: "study", durationMin: b.minutes, start: b.start }, urgency);
 
   async function addBlocks() {
     if (!plan) return;
@@ -161,8 +164,8 @@ export function PlanWeekDialog({
       .filter((b) => b.keep)
       .map((b) => {
         const target = byKey.get(b.targetKey)!;
-        const title = blockTitle(target);
-        const { rank, xp } = assessQuest({ title, category: "study", durationMin: b.minutes });
+        const title = titleFor(target);
+        const { rank, xp } = scoreBlock(target, b);
         const due = target.due.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
         return {
           title,
@@ -183,7 +186,7 @@ export function PlanWeekDialog({
   const kept = plan?.blocks.filter((b) => b.keep) ?? [];
   const keptXp = kept.reduce((sum, b) => {
     const t = byKey.get(b.targetKey);
-    return sum + (t ? assessQuest({ title: blockTitle(t), category: "study", durationMin: b.minutes }).xp : 0);
+    return sum + (t ? scoreBlock(t, b).xp : 0);
   }, 0);
   const groups = new Map<string, (PlannedBlock & { keep: boolean })[]>();
   for (const b of plan?.blocks ?? []) {
@@ -237,12 +240,12 @@ export function PlanWeekDialog({
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                           <Flag size={12} className="shrink-0 text-muted" />
-                          <span className="truncate">{c.title}</span>
+                          <span className="truncate" title={c.title}>{shortTitle(c.title)}</span>
                         </p>
                         <p className="text-xs text-muted">
                           Due {c.due.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} ·{" "}
                           {c.source}
-                          {c.alreadyPlanned > 0 && ` · ${hoursLabel(c.alreadyPlanned)} already planned`}
+                          {c.alreadyPlanned > 0 && ` · ${hoursLabel(c.alreadyPlanned)} already done or planned`}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
@@ -352,7 +355,7 @@ export function PlanWeekDialog({
                 return (
                   <p key={s.targetKey} className="mt-2 flex gap-1.5 rounded-md bg-gold-soft px-3 py-2 text-xs text-gold-ink">
                     <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                    Only {hoursLabel((t?.minutes ?? 0) - s.missingMinutes)} of {hoursLabel(t?.minutes ?? 0)} fit before “{t?.title}”.
+                    Only {hoursLabel((t?.minutes ?? 0) - s.missingMinutes)} of {hoursLabel(t?.minutes ?? 0)} fit before “{t ? shortTitle(t.title) : ""}”.
                     Try longer days, more hours per day, or including weekends.
                   </p>
                 );
@@ -367,8 +370,8 @@ export function PlanWeekDialog({
                     <ul className="mt-1 divide-y divide-line rounded-lg border border-line">
                       {blocks.map((b) => {
                         const t = byKey.get(b.targetKey)!;
-                        const title = blockTitle(t);
-                        const { rank, xp } = assessQuest({ title, category: "study", durationMin: b.minutes });
+                        const title = titleFor(t);
+                        const { rank, xp } = scoreBlock(t, b);
                         return (
                           <li key={b.start.toISOString()} className="flex items-center gap-3 px-3 py-2">
                             <input

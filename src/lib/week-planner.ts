@@ -55,9 +55,16 @@ export function classifyTarget(title: string): { kind: TargetKind; minutes: numb
   return { kind: "other", minutes: 3 * 60 };
 }
 
-/** Title for a suggested block, worded so the quest scorer recognises the work type. */
-export function blockTitle(target: Pick<Target, "title" | "kind">) {
-  const name = target.title.replace(/\s*\[[^\]]*\]\s*/g, " ").trim(); // drop "[COMP30026_2026_SM2]"
+/**
+ * Title for a suggested block, worded so the quest scorer recognises the subject and work type:
+ * "Models of Computation · Assignment 2: assignment work".
+ */
+export function blockTitle(target: Pick<Target, "title" | "kind">, subject?: string | null) {
+  const bare = target.title
+    .replace(/\s*\[[^\]]*\]\s*/g, " ") // drop "[COMP30026_2026_SM2]"
+    .replace(/\s+[-–]\s+due\b.*$/i, "") // drop "- due Week 10"
+    .trim();
+  const name = subject && !bare.toLowerCase().includes(subject.toLowerCase()) ? `${subject} · ${bare}` : bare;
   if (target.kind === "exam") return `${name}: exam revision`;
   if (target.kind === "quiz") return `${name}: quiz prep`;
   if (target.kind === "assignment") return `${name}: assignment work`;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, ChevronDown, Clock, GraduationCap, Hammer, Sparkles, TriangleAlert } from "lucide-react";
+import { BookOpen, ChevronDown, Clock, Flag, GraduationCap, Hammer, Sparkles, TriangleAlert } from "lucide-react";
 import {
   difficultyWord,
   RANK_STYLES,
@@ -9,6 +9,7 @@ import {
   type Assessment,
   type FactorKind,
 } from "@/lib/difficulty";
+import { describeDaysLeft, type Urgency } from "@/lib/urgency";
 import { RankBadge } from "./rank-badge";
 
 const ICONS: Record<FactorKind, typeof Clock> = {
@@ -33,12 +34,12 @@ export function ScorePanel({
   xpLabel,
   minutes,
 }: {
-  assessment: Assessment;
+  assessment: Assessment & { urgency?: Urgency | null };
   xpLabel: React.ReactNode;
   minutes: number;
 }) {
   const [open, setOpen] = useState(false);
-  const { rank, score, detected, reasons } = assessment;
+  const { rank, score, detected, reasons, urgency } = assessment;
   const maxPoints = Math.max(10, ...reasons.map((r) => Math.abs(r.points)));
 
   return (
@@ -56,6 +57,16 @@ export function ScorePanel({
           <ScoreScale score={score} />
         </div>
       </div>
+
+      {urgency && (
+        <p className="mt-2 flex gap-1.5 rounded-md bg-accent-soft px-2 py-1.5 text-xs text-accent">
+          <Flag size={13} className="mt-0.5 shrink-0" />
+          <span>
+            <strong>+{Math.round(urgency.bonus * 100)}% deadline bonus</strong> · {urgency.deadline.label} is due{" "}
+            {describeDaysLeft(urgency.daysLeft)} this quest. The closer the due date, the bigger the bonus.
+          </span>
+        </p>
+      )}
 
       <ul className="mt-3 flex flex-wrap gap-1.5">
         {detected.map((d) => {
@@ -115,7 +126,8 @@ export function ScorePanel({
                 </li>
               ))}
               <li className="pt-1 text-[11px] text-faint">
-                Difficulty score {score} / 100 → {assessment.xpPerHour} XP per hour. Length doesn&apos;t change
+                Difficulty score {score} / 100 → {assessment.xpPerHour} XP per hour
+                {urgency && ` (including the +${Math.round(urgency.bonus * 100)}% deadline bonus)`}. Length doesn&apos;t change
                 the rank; it multiplies the XP.
               </li>
             </ul>

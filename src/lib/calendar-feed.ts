@@ -150,10 +150,13 @@ export function parseFeed(ics: string, tz: string) {
     }
     for (const inst of instances) {
       const title = text(inst.summary) || "Untitled event";
-      const start = new Date(inst.start);
-      const end = inst.end ? new Date(inst.end) : new Date(start);
-      if (end < from || start > to) continue;
       const allDay = inst.isFullDay;
+      // node-ical puts all-day dates at midnight in the server's timezone. Store them as UTC
+      // midnight of the calendar date instead, so the date is the same wherever this runs.
+      const asDate = (d: Date) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const start = allDay ? asDate(new Date(inst.start)) : new Date(inst.start);
+      const end = inst.end ? (allDay ? asDate(new Date(inst.end)) : new Date(inst.end)) : new Date(start);
+      if (end < from || start > to) continue;
       const isDeadline = isDeadlineEvent(title, start, end, allDay);
       const { weekday, time } = localParts(start, tz);
       const minutes = Math.round((end.getTime() - start.getTime()) / 60_000);
@@ -185,21 +188,22 @@ export function parseFeed(ics: string, tz: string) {
 export function summariseSeries(events: FeedEvent[], tz: string): SeriesSummary[] {
   const groups = new Map<string, FeedEvent[]>();
   for (const e of events) groups.set(e.seriesKey, [...(groups.get(e.seriesKey) ?? []), e]);
-  const fmtDate = (d: Date) =>
-    new Intl.DateTimeFormat("en-AU", { timeZone: tz, weekday: "short", day: "numeric", month: "short" }).format(d);
+  // All-day dates are stored as UTC midnight, so read them in UTC.
+  const fmtDate = (e: FeedEvent) =>
+    new Intl.DateTimeFormat("en-AU", { timeZone: e.allDay ? "UTC" : tz, weekday: "short", day: "numeric", month: "short" }).format(e.start);
 
   const out: SeriesSummary[] = [];
   for (const [key, list] of groups) {
     const first = list[0];
     const upcoming = list.find((e) => e.start.getTime() > Date.now()) ?? first;
     if (key === ONEOFFS_KEY) {
-      out.push({ key, title: "One-off events", when: `${list.length} single events`, count: list.length, next: fmtDate(upcoming.start) });
+      out.push({ key, title: "One-off events", when: `${list.length} single events`, count: list.length, next: fmtDate(upcoming) });
     } else if (key === DEADLINES_KEY) {
-      out.push({ key, title: "Due dates and all-day events", when: `${list.length} dates`, count: list.length, next: fmtDate(upcoming.start), isDeadline: true });
+      out.push({ key, title: "Due dates and all-day events", when: `${list.length} dates`, count: list.length, next: fmtDate(upcoming), isDeadline: true });
     } else {
       const s = localParts(first.start, tz);
       const e = localParts(first.end, tz);
-      out.push({ key, title: displayTitle(first.title), when: `${s.weekday} ${s.time}–${e.time}`, count: list.length, next: fmtDate(upcoming.start) });
+      out.push({ key, title: displayTitle(first.title), when: `${s.weekday} ${s.time}–${e.time}`, count: list.length, next: fmtDate(upcoming) });
     }
   }
   const order = (s: SeriesSummary) => (s.key === DEADLINES_KEY ? 2 : s.key === ONEOFFS_KEY ? 1 : 0);

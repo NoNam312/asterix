@@ -39,6 +39,35 @@ export const LAYER_COLORS = ["#c27c0e", "#d9467a", "#ea580c", "#16a34a", "#5b5bd
 
 export const isDeadline = (q: Pick<Quest, "kind">) => q.kind === "deadline";
 
+/** The date a deadline falls on, as local midnight. All-day dates are stored as UTC midnight. */
+export function dueDay(q: Pick<Quest, "start_at" | "all_day">) {
+  const d = new Date(q.start_at);
+  return q.all_day
+    ? new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+    : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** When a deadline is actually due: its time, or the end of the day for all-day ones. */
+export function dueAt(q: Pick<Quest, "start_at" | "all_day">) {
+  if (!q.all_day) return new Date(q.start_at);
+  const d = dueDay(q);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59);
+}
+
+/** Subject code in a title, e.g. "COMP30019" from Canvas's "[COMP30019_2026_SM2]" tag or "MAST20009 Lecture". */
+export function courseCode(title: string) {
+  return title.match(/(?<![A-Za-z])([A-Z]{4}\d{5})(?!\d)/)?.[1] ?? null;
+}
+
+/** Title without Canvas's "[COMP30019_2026_SM2]" tag, led by the subject code: "COMP30019 · Project 2". */
+export function shortTitle(title: string) {
+  const tag = title.match(/\s*\[([A-Z]{2,5}\d{3,5})[^\]]*\]\s*/);
+  if (!tag) return title;
+  // Canvas titles often repeat the due week: "Project 2 (Milestone 1) - due Week 10".
+  const rest = title.replace(tag[0], " ").replace(/\s+[-–]\s+due\b.*$/i, "").trim();
+  return `${tag[1]} · ${rest}`;
+}
+
 export type Profile = {
   username: string;
   total_xp: number;

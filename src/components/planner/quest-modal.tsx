@@ -6,6 +6,7 @@ import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
 import { ScorePanel } from "./score-panel";
+import { scoreQuest, type UrgencyContext } from "@/lib/urgency";
 
 export type QuestDraft = {
   id?: string;
@@ -34,9 +35,11 @@ type Props = {
   onSave: (draft: QuestDraft) => Promise<string | undefined>;
   onDelete: (id: string) => Promise<string | undefined>;
   onStatus: (id: string, status: QuestStatus) => Promise<string | undefined>;
+  /** Upcoming deadlines, for the deadline bonus. */
+  urgency: UrgencyContext;
 };
 
-export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus }: Props) {
+export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus, urgency }: Props) {
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -68,15 +71,21 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   }
 
   const finished = initial.status === "completed" || initial.status === "failed";
-  const assessment = assessQuest({
-    title: draft.title,
-    notes: draft.notes,
-    category: draft.category,
-    durationMin: draft.duration,
-  });
-
   // Imported calendar events follow their feed, so their details are read-only.
   const imported = !!initial.source;
+  const assessment = scoreQuest(
+    {
+      id: initial.id,
+      title: draft.title,
+      notes: draft.notes,
+      category: draft.category,
+      durationMin: draft.duration,
+      start: new Date(`${draft.date}T${draft.time}`),
+      calendarId: imported ? "imported" : null,
+      kind: draft.kind,
+    },
+    urgency,
+  );
   const deadline = initial.kind === "deadline";
   const when = new Date(`${draft.date}T${draft.time}`);
 
