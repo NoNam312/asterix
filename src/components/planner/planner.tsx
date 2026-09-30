@@ -56,7 +56,7 @@ import { computeAchievements, type Achievement } from "@/lib/achievements";
 import { achievementsSeeded, takeNewAchievements } from "@/lib/achievements-seen";
 import { loadHistory } from "@/lib/history";
 import { describeStreak, streakInfo, type StreakInfo } from "@/lib/streak";
-import { describeRepeat, type QuestSeries } from "@/lib/recurrence";
+import { describeRepeat, type QuestSeries, type Weekday } from "@/lib/recurrence";
 import {
   changeUpcoming,
   endSeries,
@@ -440,7 +440,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     });
   }
 
-  function openEdit(q: Quest) {
+  /** Opens a quest; `repeat` pre-fills the Repeat picker (used by "Repeat…" in the menu). */
+  function openEdit(q: Quest, repeat?: Weekday[]) {
     // All-day due dates show as due at the end of that day.
     const start = isDeadline(q) ? dueAt(q) : new Date(q.start_at);
     setDraft({
@@ -457,7 +458,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       kind: q.kind,
       source: q.calendar_id ? (layerMap.get(q.calendar_id)?.name ?? "a calendar") : undefined,
       recurrenceId: q.recurrence_id ?? null,
-      repeat: q.recurrence_id ? (seriesById.get(q.recurrence_id)?.weekdays ?? null) : null,
+      repeat: repeat ?? (q.recurrence_id ? (seriesById.get(q.recurrence_id)?.weekdays ?? null) : null),
     });
   }
 
@@ -768,6 +769,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         onSelect: () => duplicate(q, addMinutes(start, q.duration_min)),
       },
       { label: "Copy to tomorrow", icon: <CopyPlus />, onSelect: () => duplicate(q, addDays(start, 1)) },
+      ...(canRepeat && !q.recurrence_id
+        ? [
+            {
+              label: `Repeat every ${start.toLocaleDateString([], { weekday: "long" })}…`,
+              icon: <Repeat />,
+              onSelect: () => openEdit(q, [start.getDay() as Weekday]),
+            },
+          ]
+        : []),
       {
         label: "Move to tomorrow",
         icon: <CalendarArrowUp />,
