@@ -128,3 +128,61 @@ export async function searchIssues(conn: JiraConnection, max = 50): Promise<Jira
     };
   });
 }
+
+export type JiraTransition = { id: string; name: string; to: string; toCategory: string };
+
+const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+
+function checkKey(key: string) {
+  if (!ISSUE_KEY.test(key)) throw new JiraError("That isn't a Jira issue key.");
+  return encodeURIComponent(key);
+}
+
+/** The status changes Jira allows for this issue right now (its workflow decides). */
+export async function getTransitions(conn: JiraConnection, key: string): Promise<JiraTransition[]> {
+  const token = decryptToken(conn.token_cipher);
+  const body = (await jiraFetch(conn.site, conn.email, token, `/rest/api/3/issue/${checkKey(key)}/transitions`)) as {
+    transitions?: { id: string; name: string; to?: { name?: string; statusCategory?: { key?: string } } }[];
+  };
+  return (body.transitions ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    to: t.to?.name ?? t.name,
+    toCategory: t.to?.statusCategory?.key ?? "indeterminate",
+  }));
+}
+
+/**
+ * Moves an issue: by transition id, or to the first status in a category ("done" = whatever
+ * this project calls finished). Returns the new status.
+ */
+export async function transitionIssue(
+  conn: JiraConnection,
+  key: string,
+  target: { id: string } | { category: string },
+): Promise<JiraTransition> {
+  const options = await getTransitions(conn, key);
+  const chosen = "id" in target ? options.find((t) => t.id === target.id) : options.find((t) => t.toCategory === target.category);
+  if (!chosen) throw new JiraError("Jira doesn't allow that status change for this issue.");
+  const token = decryptToken(conn.token_cipher);
+  const res = await fetch(`${conn.site}/rest/api/3/issue/${checkKey(key)}/transitions`, {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${conn.email}:${token}`).toString("base64")}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ transition: { id: chosen.id } }),
+  }).catch(() => null);
+  // Success is "204 No Content", so this can't go through jiraFetch (which expects JSON).
+  if (!res) throw new JiraError("Couldn't reach Jira.");
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as { errorMessages?: string[]; errors?: Record<string, string> } | null;
+    throw new JiraError(
+      err?.errorMessages?.[0] ?? Object.values(err?.errors ?? {})[0] ?? `Jira refused the change (${res.status}).`,
+    );
+  }
+  return chosen;
+}

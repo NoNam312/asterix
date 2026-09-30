@@ -29,6 +29,8 @@ import {
   Square,
   Swords,
   Trash2,
+  SquareKanban,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -312,13 +314,34 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
   }, [metaLoaded, days, byDay, todayKey, urgency, supabase]);
 
-  // Once per visit: Jira issues assigned to you (only if Jira is connected in Settings).
-  useEffect(() => {
+  // Jira issues assigned to you (only if Jira is connected in Settings); reloaded after a status change.
+  const loadJira = useCallback(() => {
     fetch("/api/jira")
       .then((r) => r.json())
       .then((res) => setJira(res.connected ? { issues: res.issues ?? [], error: res.error } : null))
       .catch(() => undefined);
   }, []);
+  useEffect(() => {
+    loadJira();
+  }, [loadJira]);
+  // After completing a quest made from a Jira issue: offer to move the issue to Done.
+  const [jiraDone, setJiraDone] = useState<{ key: string; state: "ask" | "moving" | "moved" | string } | null>(null);
+
+  async function markJiraDone(key: string) {
+    setJiraDone({ key, state: "moving" });
+    const res = await fetch("/api/jira/transitions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, category: "done" }),
+    })
+      .then((r) => r.json())
+      .catch(() => ({ error: "Couldn't reach Jira." }));
+    setJiraDone({ key, state: res.error ?? "moved" });
+    if (!res.error) {
+      loadJira();
+      setTimeout(() => setJiraDone((cur) => (cur?.key === key ? null : cur)), 2500);
+    }
+  }
 
   // When each Jira issue is next planned as a quest (from the days already loaded).
   const jiraPlanned = useMemo(() => {
@@ -711,6 +734,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         froze: bonus?.froze,
       });
       announceAchievements();
+      const jiraKey = jiraKeyOf(quest?.notes);
+      if (jiraKey && jira?.issues.some((i) => i.key === jiraKey && i.statusCategory !== "done")) {
+        setJiraDone({ key: jiraKey, state: "ask" });
+      }
     } else if (status === "failed" && quest) {
       showToast({ failed: quest.title, lost });
     }
@@ -1098,7 +1125,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                 <p className="px-1 pt-1 text-xs text-faint">No due dates in the next 3 weeks.</p>
               )
             ) : sideTab === "jira" && jira ? (
-              <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} hideTitle />
+              <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={loadJira} hideTitle />
             ) : (
               <>
               {todayQuests.length === 0 ? (
@@ -1307,7 +1334,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                 </div>
               ) : sideTab === "jira" && jira ? (
                 <div className="px-4 py-3">
-                  <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} draggable={false} hideTitle />
+                  <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={loadJira} draggable={false} hideTitle />
                   <p className="mt-3 text-center text-xs text-faint">Tap an issue to plan when to work on it.</p>
                 </div>
               ) : (
@@ -1459,6 +1486,35 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {jiraDone && (
+        <div className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[60] flex animate-[toast-in_300ms_ease-out] items-center gap-3 rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl sm:inset-x-auto sm:bottom-28 sm:right-6 sm:w-80">
+          <SquareKanban size={18} className="shrink-0 text-accent" />
+          <span className="min-w-0 flex-1 text-sm">
+            {jiraDone.state === "ask" || jiraDone.state === "moving" ? (
+              <>
+                Move <strong>{jiraDone.key}</strong> to Done in Jira?
+              </>
+            ) : jiraDone.state === "moved" ? (
+              <span className="text-xp">{jiraDone.key} moved to Done ✓</span>
+            ) : (
+              <span className="text-danger">{jiraDone.state}</span>
+            )}
+          </span>
+          {(jiraDone.state === "ask" || jiraDone.state === "moving") && (
+            <button
+              onClick={() => markJiraDone(jiraDone.key)}
+              disabled={jiraDone.state === "moving"}
+              className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {jiraDone.state === "moving" ? "Moving…" : "Move"}
+            </button>
+          )}
+          <button onClick={() => setJiraDone(null)} aria-label="Dismiss" className="shrink-0 rounded p-1 text-muted hover:bg-surface">
+            <X size={14} />
+          </button>
         </div>
       )}
 

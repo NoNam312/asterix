@@ -107,7 +107,7 @@ export function JiraSettings() {
             <a href={TOKEN_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-accent hover:underline">
               Atlassian → Security → API tokens <ExternalLink size={11} />
             </a>
-            . It&apos;s encrypted on the server and never shown again; QuestLog only reads your issues.
+            . It&apos;s encrypted on the server and never shown again. QuestLog reads your issues and only changes one when you pick a new status.
           </p>
           <button
             disabled={busy}
