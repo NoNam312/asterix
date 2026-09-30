@@ -21,11 +21,9 @@ export type JiraIssue = {
 export type JiraTransition = { id: string; name: string; to: string; toCategory: string };
 
 /** Jira's blue, used to mark quests made from Jira issues. */
-export const JIRA_COLOR = "#0c66e4";
-
-/** Diagonal stripes in a quest's colours: how Jira quests stand out from other quests. */
-export const jiraStripes = (color: string, soft: string) =>
-  `repeating-linear-gradient(135deg, ${soft} 0 7px, color-mix(in srgb, ${color} 9%, var(--color-canvas)) 7px 14px)`;
+export const JIRA_COLOR = "#2684ff";
+/** Second colour of the Jira edge on quests (Atlassian purple). */
+export const JIRA_COLOR_2 = "#6554c0";
 
 /** Drag-and-drop type for an issue dragged onto the calendar. */
 export const JIRA_DRAG_TYPE = "application/x-questlog-jira";

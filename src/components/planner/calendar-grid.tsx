@@ -15,7 +15,7 @@ import { xpFor } from "@/lib/difficulty";
 import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
-import { JIRA_COLOR, JIRA_DRAG_TYPE, jiraKeyOf, jiraStripes, type JiraIssue } from "@/lib/jira-issues";
+import { JIRA_COLOR, JIRA_COLOR_2, JIRA_DRAG_TYPE, jiraKeyOf, type JiraIssue } from "@/lib/jira-issues";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
@@ -433,8 +433,10 @@ function QuestBlock({
         height,
         left: `calc(${(col.index / col.count) * 100}% + 2px)`,
         width: `calc(${100 / col.count}% - 4px)`,
-        background: failed ? "var(--color-danger-soft)" : jira ? jiraStripes(cat.color, cat.soft) : cat.soft,
+        background: failed ? "var(--color-danger-soft)" : cat.soft,
         borderColor: failed ? "var(--color-danger)" : cat.color,
+        // Jira quests keep their category's background but get an Atlassian blue-to-purple edge.
+        ...(jira && !failed ? { borderImage: `linear-gradient(to bottom, ${JIRA_COLOR}, ${JIRA_COLOR_2}) 1` } : {}),
         ["--tw-ring-color" as string]: cat.color,
       }}
     >
