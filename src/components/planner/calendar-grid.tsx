@@ -11,6 +11,8 @@ import {
 import { CalendarDays, Check, Flag, X } from "lucide-react";
 import type { Rank } from "@/lib/difficulty";
 import { haptic } from "@/lib/haptics";
+import { xpFor } from "@/lib/difficulty";
+import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, isDeadline, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
 
@@ -217,7 +219,10 @@ export function CalendarGrid({
   const shown = quests.map((q) => {
     if (drag?.quest.id !== q.id) return q;
     const { start, duration } = preview(drag);
-    return { ...q, start_at: start.toISOString(), duration_min: duration };
+    // XP is the quest's hourly rate × length, so it can be updated live while resizing.
+    const unfinished = q.status === "planned" || q.status === "active";
+    const xp = unfinished ? xpFor((q.xp * 60) / q.duration_min, duration) : q.xp;
+    return { ...q, start_at: start.toISOString(), duration_min: duration, xp };
   });
 
   return (
@@ -418,6 +423,12 @@ function QuestBlock({
           )}
         </span>
       </div>
+      {/* Live readout while moving or resizing: length and the XP it will be worth. */}
+      {dragging && !done && !failed && (
+        <span className="pointer-events-none absolute bottom-2.5 right-1.5 rounded-full bg-ink px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-white shadow">
+          {formatDuration(quest.duration_min)} · +{quest.xp} XP
+        </span>
+      )}
       <div
         onPointerDown={(e) => onPointerDown(e, "resize")}
         className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100"
