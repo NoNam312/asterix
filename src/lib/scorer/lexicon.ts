@@ -106,6 +106,10 @@ export const TASK_TYPES: TaskType[] = [
     "bouldering", "football", "soccer", "basketball", "netball", "tennis", "badminton", "volleyball", "rugby",
     "hockey", "cricket", "martial arts", "bjj", "muay thai", "karate", "judo", "dance class", "spin class", "rowing",
     "calisthenics", "pushups", "push ups", "pull ups", "plank", "hike", "hiking", "surf", "surfing", "skate",
+    // exercise names, so a workout list in the notes reads as gym ("Hammer Curls - 7kg")
+    "curls", "bicep curls", "hammer curls", "lat pulldowns", "lat pull downs", "pulldowns", "pull downs",
+    "bench press", "shoulder press", "overhead press", "leg press", "lunges", "dips", "tricep extensions",
+    "lateral raises", "cable rows", "high rows", "seated rows", "reps",
   ], studyAlt: { words: ["run", "running", "training", "core", "lift", "cycle"], type: "study-session" } },
   { id: "fitness-light", label: "Light activity", domain: "fitness", words: [
     "walk", "walking", "stretch", "stretching", "yoga", "mobility", "cooldown", "cool down", "pilates", "light jog",

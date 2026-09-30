@@ -168,7 +168,14 @@ export function extractFeatures(input: QuestInput): Features {
   }
   const areaInTitle = !!areaHit;
   areaHit ??= bestMatch(notesTokens, areaPhrases, byDifficulty);
-  taskHit ??= bestTask(notesTokens);
+  // The title sets the context: a study subject in the title means the notes' non-study words
+  // ("row reduction" ≠ rowing) don't turn it into a workout.
+  if (!taskHit) {
+    const fromNotes = bestTask(notesTokens);
+    if (fromNotes && !(areaInTitle && !["study", "project", "career", "work"].includes(fromNotes.type.domain))) {
+      taskHit = fromNotes;
+    }
+  }
   const code = courseCode(titleTokens) ?? courseCode(notesTokens);
 
   let area: Features["area"];
