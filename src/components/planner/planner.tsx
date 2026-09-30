@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CalendarOff,
   CalendarRange,
+  Repeat,
   ListChecks,
   TriangleAlert,
   Check,
@@ -55,6 +56,16 @@ import { computeAchievements, type Achievement } from "@/lib/achievements";
 import { achievementsSeeded, takeNewAchievements } from "@/lib/achievements-seen";
 import { loadHistory } from "@/lib/history";
 import { describeStreak, streakInfo, type StreakInfo } from "@/lib/streak";
+import { describeRepeat, type QuestSeries } from "@/lib/recurrence";
+import {
+  changeUpcoming,
+  endSeries,
+  extendSeries,
+  loadSeries,
+  startSeries,
+  type RepeatDraft,
+  type Scope,
+} from "@/lib/recurring";
 import {
   CATEGORIES,
   CATEGORY_KEYS,
@@ -148,6 +159,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [error, setError] = useState<string | null>(null);
   const cache = useQuestCache(supabase, setError);
   const [metaLoaded, setMetaLoaded] = useState(false);
+  const [seriesById, setSeriesById] = useState<Map<string, QuestSeries>>(new Map());
+  const [canRepeat, setCanRepeat] = useState(false);
 
   const days = useMemo(
     () =>
@@ -185,7 +198,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     const today = startOfDay(new Date());
     const nearFrom = addDays(today, -Math.max(URGENCY_WINDOW_DAYS, 28));
     const nearTo = addDays(today, DUE_SOON_DAYS + URGENCY_WINDOW_DAYS + 15);
-    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze] = await Promise.all([
+    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze, repeats] = await Promise.all([
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
@@ -204,7 +217,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       supabase.from("calendar_series").select("title"),
       // Errors (and so counts as none) until 013_insights_streak_freeze.sql is run.
       supabase.from("streak_freezes").select("day").order("day", { ascending: false }).limit(1).maybeSingle(),
+      loadSeries(supabase),
     ]);
+    setSeriesById(new Map(repeats.series.map((r) => [r.id, r])));
+    setCanRepeat(repeats.ready);
     const layerList = (calendars.data ?? []) as CalendarLayer[];
     const hiddenIds = new Set(layerList.filter((l) => !l.visible).map((l) => l.id));
     const visible = (qs: Quest[]) => qs.filter((q) => !q.calendar_id || !hiddenIds.has(q.calendar_id));
@@ -281,6 +297,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     for (const [id, change] of changes) supabase.from("quests").update(change).eq("id", id).then();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
   }, [metaLoaded, days, byDay, todayKey, urgency, supabase]);
+
+  // Once per visit: add the next days of each repeating quest (they're created 4 weeks ahead).
+  const repeatsExtended = useRef(false);
+  useEffect(() => {
+    if (repeatsExtended.current) return;
+    repeatsExtended.current = true;
+    (async () => {
+      const { series, ready } = await loadSeries(supabase);
+      if (!ready || !series.length) return;
+      const added = await extendSeries(supabase, series).catch(() => 0);
+      if (added) refresh();
+    })();
+  }, [supabase, refresh]);
 
   // Once per visit: re-sync calendar layers not synced in the last 6 hours.
   const autoSynced = useRef(false);
@@ -427,7 +456,28 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       penalty: q.xp_penalty,
       kind: q.kind,
       source: q.calendar_id ? (layerMap.get(q.calendar_id)?.name ?? "a calendar") : undefined,
+      recurrenceId: q.recurrence_id ?? null,
+      repeat: q.recurrence_id ? (seriesById.get(q.recurrence_id)?.weekdays ?? null) : null,
     });
+  }
+
+  const repeatDraft = (d: QuestDraft): Omit<RepeatDraft, "weekdays"> => ({
+    title: d.title,
+    category: d.category,
+    notes: d.notes,
+    date: d.date,
+    time: d.time,
+    duration: d.duration,
+  });
+
+  /** Stop repeating after this quest (it stays; later planned ones go). */
+  async function stopRepeating(q: Quest) {
+    const series = q.recurrence_id ? seriesById.get(q.recurrence_id) : undefined;
+    if (!series) return;
+    const { error, undo } = await endSeries(supabase, series, q, false);
+    if (error) return setError(error);
+    pushUndo(`Stopped repeating “${q.title}”`, undo!);
+    refresh();
   }
 
   /** Untick a class series: its upcoming events disappear and future syncs skip it. */
@@ -452,7 +502,16 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     refresh();
   }
 
-  async function save(d: QuestDraft) {
+  async function save(d: QuestDraft, scope: Scope = "this") {
+    // A new repeating quest: the series creates every quest, including the first.
+    if (!d.id && d.repeat) {
+      const { error, undo } = await startSeries(supabase, { ...repeatDraft(d), weekdays: d.repeat });
+      if (error) return error;
+      pushUndo(`Added “${d.title}” · ${describeRepeat(d.repeat)}`, undo!);
+      setDraft(null);
+      refresh();
+      return;
+    }
     const finished = d.status === "completed" || d.status === "failed";
     const { rank, xp } = scoreQuest(
       {
@@ -483,9 +542,27 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     if (error) return error.message;
     if (before) {
       const { title, category, notes, start_at, duration_min, difficulty, xp } = before;
-      pushUndo("Quest edited", () =>
-        supabase.from("quests").update({ title, category, notes, start_at, duration_min, difficulty, xp }).eq("id", before.id),
-      );
+      const undos: (() => Promise<unknown>)[] = [
+        async () =>
+          supabase.from("quests").update({ title, category, notes, start_at, duration_min, difficulty, xp }).eq("id", before.id),
+      ];
+      let label = "Quest edited";
+      const series = before.recurrence_id ? seriesById.get(before.recurrence_id) : undefined;
+      if (!series && d.repeat) {
+        // A one-off quest that should start repeating becomes the first of a series.
+        const res = await startSeries(supabase, { ...repeatDraft(d), weekdays: d.repeat }, before.id);
+        if (res.error) return res.error;
+        undos.push(res.undo!);
+        label = `Now repeats · ${describeRepeat(d.repeat)}`;
+      } else if (series && scope === "future") {
+        const res = await changeUpcoming(supabase, series, before, { ...repeatDraft(d), weekdays: d.repeat ?? null });
+        if (res.undo) undos.push(res.undo);
+        if (res.error) return res.error;
+        label = d.repeat ? "Updated this & upcoming" : `Stopped repeating “${d.title}”`;
+      }
+      pushUndo(label, async () => {
+        for (const undo of undos.reverse()) await undo();
+      });
     } else if (saved) {
       pushUndo("Quest added", () => supabase.from("quests").delete().eq("id", saved.id));
     }
@@ -493,8 +570,22 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     refresh();
   }
 
-  async function remove(id: string) {
+  async function remove(id: string, scope: Scope = "this") {
     const before = findQuest(id);
+    const series = before?.recurrence_id ? seriesById.get(before.recurrence_id) : undefined;
+    if (before && series && scope === "future") {
+      // This one and every upcoming one; past ones stay as history.
+      const res = await endSeries(supabase, series, before, true);
+      if (res.error) return res.error;
+      await supabase.from("quests").delete().eq("id", id);
+      pushUndo(`Deleted “${before.title}” and upcoming repeats`, async () => {
+        await res.undo!();
+        if (before.status !== "planned") await supabase.from("quests").insert(before);
+      });
+      setDraft(null);
+      refresh();
+      return;
+    }
     const { error } = await supabase.from("quests").delete().eq("id", id);
     if (error) return error.message;
     if (before) pushUndo(`Deleted “${before.title}”`, () => supabase.from("quests").insert(before));
@@ -709,6 +800,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         ),
       },
       { separator: true },
+      ...(q.recurrence_id && seriesById.has(q.recurrence_id)
+        ? [
+            {
+              label: `Stop repeating after this (${describeRepeat(seriesById.get(q.recurrence_id)!.weekdays)})`,
+              icon: <Repeat />,
+              onSelect: () => stopRepeating(q),
+            },
+          ]
+        : []),
       { label: "Delete", icon: <Trash2 />, danger: true, onSelect: () => remove(q.id).then((e) => e && setError(e)) },
     ];
   }
@@ -1120,6 +1220,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           onDelete={remove}
           onStatus={setStatus}
           urgency={urgency}
+          canRepeat={canRepeat}
         />
       )}
 

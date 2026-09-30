@@ -1,12 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, Flag, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { CalendarDays, Check, Flag, Play, Repeat, RotateCcw, Trash2, X } from "lucide-react";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
 import { ScorePanel } from "./score-panel";
 import { scoreQuest, type UrgencyContext } from "@/lib/urgency";
+import {
+  describeRepeat,
+  EVERY_DAY,
+  repeatPreset,
+  WEEK_ORDER,
+  WEEKDAYS,
+  type Weekday,
+} from "@/lib/recurrence";
+import type { Scope } from "@/lib/recurring";
 
 export type QuestDraft = {
   id?: string;
@@ -24,6 +33,10 @@ export type QuestDraft = {
   /** Name of the calendar layer this was imported from (read-only when set). */
   source?: string;
   kind?: "task" | "deadline";
+  /** Days it repeats on (null = doesn't repeat). */
+  repeat?: Weekday[] | null;
+  /** The series this quest belongs to, if it repeats. */
+  recurrenceId?: string | null;
 };
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
@@ -32,14 +45,16 @@ type Props = {
   draft: QuestDraft;
   onClose: () => void;
   /** Resolves to an error message if saving failed. */
-  onSave: (draft: QuestDraft) => Promise<string | undefined>;
-  onDelete: (id: string) => Promise<string | undefined>;
+  onSave: (draft: QuestDraft, scope: Scope) => Promise<string | undefined>;
+  onDelete: (id: string, scope: Scope) => Promise<string | undefined>;
   onStatus: (id: string, status: QuestStatus) => Promise<string | undefined>;
   /** Upcoming deadlines, for the deadline bonus. */
   urgency: UrgencyContext;
+  /** False until 014_recurring_quests.sql has been run. */
+  canRepeat: boolean;
 };
 
-export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus, urgency }: Props) {
+export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus, urgency, canRepeat }: Props) {
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -47,6 +62,14 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   const [categoryPicked, setCategoryPicked] = useState(!!initial.id);
   const [autoCategory, setAutoCategory] = useState(false);
   const isNew = !initial.id;
+  const [repeatMode, setRepeatMode] = useState(() => repeatPreset(initial.repeat ?? null));
+  const [pickedScope, setScope] = useState<Scope>("this");
+  const repeating = !!initial.recurrenceId;
+  const repeatChanged =
+    (initial.repeat ?? []).length !== (draft.repeat ?? []).length ||
+    (draft.repeat ?? []).some((d) => !(initial.repeat ?? []).includes(d));
+  // Changing how it repeats always affects the upcoming ones.
+  const scope: Scope = repeating && repeatChanged ? "future" : pickedScope;
   const set = <K extends keyof QuestDraft>(key: K, value: QuestDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
 
@@ -60,7 +83,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
     e.preventDefault();
     if (!draft.title.trim()) return;
     setSaving(true);
-    setError(await onSave({ ...draft, title: draft.title.trim() }));
+    setError(await onSave({ ...draft, title: draft.title.trim() }, scope));
     setSaving(false);
   }
 
@@ -243,6 +266,91 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           </Labeled>
         </div>
 
+        {canRepeat && (
+          <div className="mt-3">
+            <span className="mb-1 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted">
+              <Repeat size={11} /> Repeat
+            </span>
+            <select
+              value={repeatMode}
+              onChange={(e) => {
+                const mode = e.target.value as typeof repeatMode;
+                setRepeatMode(mode);
+                const weekday = new Date(`${draft.date}T12:00`).getDay() as Weekday;
+                set(
+                  "repeat",
+                  mode === "none"
+                    ? null
+                    : mode === "daily"
+                      ? EVERY_DAY
+                      : mode === "weekdays"
+                        ? WEEKDAYS
+                        : draft.repeat?.length
+                          ? draft.repeat
+                          : [weekday],
+                );
+              }}
+              className={inputClass}
+            >
+              <option value="none">Doesn&apos;t repeat</option>
+              <option value="daily">Every day</option>
+              <option value="weekdays">Every weekday (Mon–Fri)</option>
+              <option value="custom">Custom days…</option>
+            </select>
+            {repeatMode === "custom" && (
+              <div className="mt-2 flex gap-1">
+                {WEEK_ORDER.map((d) => {
+                  const on = draft.repeat?.includes(d) ?? false;
+                  const day = new Date(2026, 0, 4 + d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-pressed={on}
+                      title={day.toLocaleDateString([], { weekday: "long" })}
+                      onClick={() => {
+                        const next = on ? (draft.repeat ?? []).filter((x) => x !== d) : [...(draft.repeat ?? []), d];
+                        if (next.length) set("repeat", next);
+                      }}
+                      className={`grid size-8 place-items-center rounded-full text-xs font-semibold transition ${
+                        on ? "bg-accent text-white" : "border border-line text-muted hover:bg-surface"
+                      }`}
+                    >
+                      {day.toLocaleDateString([], { weekday: "narrow" })}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {draft.repeat && (
+              <p className="mt-1 text-[11px] text-faint">
+                {describeRepeat(draft.repeat)} at {draft.time}. Upcoming ones are added 4 weeks ahead, and each
+                can still be moved or deleted on its own.
+              </p>
+            )}
+            {repeating && !isNew && (
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <span className="text-muted">Apply to</span>
+                <div className="flex rounded-md border border-line p-0.5">
+                  {(["this", "future"] as const).map((sc) => (
+                    <button
+                      key={sc}
+                      type="button"
+                      disabled={repeatChanged && sc === "this"}
+                      onClick={() => setScope(sc)}
+                      className={`rounded px-2 py-0.5 transition disabled:opacity-40 ${
+                        scope === sc ? "bg-accent-soft font-medium text-accent" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      {sc === "this" ? "This quest" : "This & upcoming"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <Labeled label="Notes" className="mt-3">
           <textarea
             value={draft.notes}
@@ -296,10 +404,10 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           {!isNew && !imported && (
             <button
               type="button"
-              onClick={async () => setError(await onDelete(initial.id!))}
+              onClick={async () => setError(await onDelete(initial.id!, scope))}
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-danger hover:bg-danger-soft"
             >
-              <Trash2 size={14} /> Delete
+              <Trash2 size={14} /> {repeating && scope === "future" ? "Delete this & upcoming" : "Delete"}
             </button>
           )}
           <div className="flex-1" />
@@ -316,7 +424,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             disabled={saving || !draft.title.trim()}
             className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {saving ? "Saving…" : isNew ? "Add quest" : "Save"}
+            {saving ? "Saving…" : isNew ? (draft.repeat ? "Add repeating quest" : "Add quest") : "Save"}
           </button>
           )}
         </div>

@@ -8,7 +8,7 @@ import {
   minutesIntoDay,
   startOfDay,
 } from "@/lib/dates";
-import { CalendarDays, Check, Flag, X } from "lucide-react";
+import { CalendarDays, Check, Flag, Repeat, X } from "lucide-react";
 import type { Rank } from "@/lib/difficulty";
 import { haptic } from "@/lib/haptics";
 import { xpFor } from "@/lib/difficulty";
@@ -406,6 +406,7 @@ function QuestBlock({
           <span className={`truncate font-medium text-ink ${done || failed ? "line-through" : ""}`}>
             {quest.title}
           </span>
+          {quest.recurrence_id && <Repeat size={10} className="shrink-0 text-muted" aria-label="Repeats" />}
         </span>
         <span className="shrink-0 text-[11px] text-muted">
           {formatTime(start)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Play, X } from "lucide-react";
+import { Check, Play, Repeat, X } from "lucide-react";
 import { formatDuration, formatTime } from "@/lib/dates";
 import type { Rank } from "@/lib/difficulty";
 import { CATEGORIES, type Quest, type QuestStatus } from "@/lib/quests";
@@ -58,6 +58,7 @@ export function MobileQuestList({ quests, onOpen, onStatus, onNew }: Props) {
                 <span className={`truncate font-medium ${done || failed ? "text-muted line-through" : ""}`}>
                   {q.title}
                 </span>
+                {q.recurrence_id && <Repeat size={12} className="shrink-0 text-muted" aria-label="Repeats" />}
               </span>
               <span className="mt-0.5 block text-xs text-muted">
                 {formatTime(start)} · {formatDuration(q.duration_min)} ·{" "}

@@ -26,6 +26,8 @@ export type Quest = {
   completed_at?: string | null;
   /** Minutes actually worked, for quests completed with the timer running. */
   worked_min?: number | null;
+  /** The repeating quest (quest_series) this was created from, if any. */
+  recurrence_id?: string | null;
 };
 
 /** A subscribed calendar feed shown as its own layer. */
