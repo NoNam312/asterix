@@ -1061,7 +1061,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         {/* Today / Due / Jira share one panel, so the sidebar never overflows. */}
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Styled like the other sidebar headings ("CALENDARS"), with an underline for the open one. */}
-          <div className="flex gap-3 border-b border-line px-1" role="tablist">
+          <div className="flex border-b border-line" role="tablist">
             {sideTabs.map((t) => {
               const on = sideTab === t.id;
               return (
@@ -1070,7 +1070,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                   role="tab"
                   aria-selected={on}
                   onClick={() => chooseSideTab(t.id)}
-                  className={`-mb-px flex items-center gap-1 border-b-2 pb-1.5 text-[11px] font-medium uppercase tracking-wide transition ${
+                  className={`-mb-px flex flex-1 items-center justify-center gap-1 border-b-2 pb-1.5 text-[11px] font-medium uppercase tracking-wide transition ${
                     on ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
                   }`}
                 >
