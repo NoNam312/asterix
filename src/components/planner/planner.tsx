@@ -75,6 +75,7 @@ import { DailySummary, type MissedNotice } from "./daily-summary";
 import { MobileQuestList } from "./mobile-quest-list";
 import { CalendarLayers, syncLayer } from "./calendar-layers";
 import { useUndo } from "./use-undo";
+import { dayKey, useQuestCache } from "./use-quest-cache";
 import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
@@ -143,10 +144,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [mobileTab, setMobileTab] = useState<"calendar" | "quests">("calendar");
   const extensionInstalled = useExtensionInstalled();
   const [date, setDate] = useState(() => startOfDay(new Date()));
-  const [quests, setQuests] = useState<Quest[]>([]);
-  const [todayQuests, setTodayQuests] = useState<Quest[]>([]);
   const [draft, setDraft] = useState<QuestDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const cache = useQuestCache(supabase, setError);
+  const [metaLoaded, setMetaLoaded] = useState(false);
 
   const days = useMemo(
     () =>
@@ -158,30 +159,33 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const rangeStart = days[0];
   const rangeEnd = addDays(days[days.length - 1], 1);
 
-  const fetchRange = useCallback(
-    async (from: Date, to: Date) => {
-      const { data, error } = await supabase
-        .from("quests")
-        .select("*")
-        .gte("start_at", from.toISOString())
-        .lt("start_at", to.toISOString())
-        .order("start_at");
-      if (error) setError(error.message);
-      return (data ?? []) as Quest[];
-    },
-    [supabase],
-  );
-
   const rangeStartMs = rangeStart.getTime();
   const rangeEndMs = rangeEnd.getTime();
-  const refresh = useCallback(async () => {
+
+  // What's on screen comes straight from the cache; hidden layers are filtered out here.
+  const hidden = useMemo(() => new Set(layers.filter((l) => !l.visible).map((l) => l.id)), [layers]);
+  const shown = useCallback(
+    // Until layers load we can't tell which are hidden, so imported events wait a moment.
+    (qs: Quest[]) => qs.filter((q) => !q.calendar_id || (metaLoaded && !hidden.has(q.calendar_id))),
+    [hidden, metaLoaded],
+  );
+  const { byDay } = cache;
+  const quests = useMemo(() => shown(days.flatMap((d) => byDay[dayKey(d)] ?? [])), [days, byDay, shown]);
+  const todayKey = dayKey(startOfDay(new Date()));
+  const todayQuests = useMemo(
+    () => shown(byDay[todayKey] ?? []).filter((q) => !isDeadline(q)),
+    [byDay, todayKey, shown],
+  );
+
+  /**
+   * Everything except the visible range: layers, deadlines and the work around them, the
+   * active quest and the streak. Also caches the weeks around today.
+   */
+  const refreshMeta = useCallback(async () => {
     const today = startOfDay(new Date());
-    // Deadlines and the work around them, for the deadline bonus and the "Due soon" list.
-    const nearFrom = Math.min(rangeStart.getTime(), addDays(today, -URGENCY_WINDOW_DAYS).getTime());
-    const nearTo = Math.max(rangeEnd.getTime(), addDays(today, DUE_SOON_DAYS).getTime()) + (URGENCY_WINDOW_DAYS + 1) * 86_400_000;
-    const [range, todays, active, latestBonus, bestBonus, calendars, near, series, lastFreeze] = await Promise.all([
-      fetchRange(rangeStart, rangeEnd),
-      fetchRange(today, addDays(today, 1)),
+    const nearFrom = addDays(today, -Math.max(URGENCY_WINDOW_DAYS, 28));
+    const nearTo = addDays(today, DUE_SOON_DAYS + URGENCY_WINDOW_DAYS + 15);
+    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze] = await Promise.all([
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
@@ -193,19 +197,23 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       supabase
         .from("quests")
         .select("*")
-        .gte("start_at", new Date(nearFrom).toISOString())
-        .lt("start_at", new Date(nearTo).toISOString())
+        .gte("start_at", nearFrom.toISOString())
+        .lt("start_at", nearTo.toISOString())
         .order("start_at")
-        .limit(3000),
+        .limit(5000),
       supabase.from("calendar_series").select("title"),
       // Errors (and so counts as none) until 013_insights_streak_freeze.sql is run.
       supabase.from("streak_freezes").select("day").order("day", { ascending: false }).limit(1).maybeSingle(),
     ]);
     const layerList = (calendars.data ?? []) as CalendarLayer[];
-    const hidden = new Set(layerList.filter((l) => !l.visible).map((l) => l.id));
-    const shown = (qs: Quest[]) => qs.filter((q) => !q.calendar_id || !hidden.has(q.calendar_id));
+    const hiddenIds = new Set(layerList.filter((l) => !l.visible).map((l) => l.id));
+    const visible = (qs: Quest[]) => qs.filter((q) => !q.calendar_id || !hiddenIds.has(q.calendar_id));
     setLayers(layerList);
-    const nearby = shown((near.data ?? []) as Quest[]);
+    if (near.error) setError(near.error.message);
+    const nearRows = (near.data ?? []) as Quest[];
+    // These weeks are now cached too, so paging near today is instant.
+    if (!near.error && nearRows.length < 5000) cache.store(nearFrom, nearTo, nearRows);
+    const nearby = visible(nearRows);
     const ctx = buildUrgencyContext(nearby, ((series.data ?? []) as { title: string }[]).map((r) => r.title));
     setUrgency(ctx);
     const nearbyById = new Map(nearby.map((q) => [q.id, q]));
@@ -216,24 +224,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         .slice(0, 5)
         .map((p) => ({ ...p, quest: nearbyById.get(p.deadline.id)! })),
     );
-    // Unfinished quests follow the latest scorer (and deadline bonus); finished ones keep the XP
-    // they were settled with.
-    const rescored = new Map<string, Pick<Quest, "difficulty" | "xp">>();
-    for (const q of [...range, ...todays]) {
-      if (rescored.has(q.id) || isDeadline(q) || (q.status !== "planned" && q.status !== "active")) continue;
-      const { rank, xp } = scoreQuest(scoreInput(q), ctx);
-      if (rank !== q.difficulty || xp !== q.xp) rescored.set(q.id, { difficulty: rank, xp });
-    }
-    if (rescored.size) {
-      await Promise.all(
-        [...rescored].map(([id, patch]) => supabase.from("quests").update(patch).eq("id", id)),
-      );
-    }
-    const withScores = (qs: Quest[]) => qs.map((q) => ({ ...q, ...rescored.get(q.id) }));
-    setQuests(shown(withScores(range)));
-    setTodayQuests(shown(withScores(todays)).filter((q) => !isDeadline(q)));
     setActiveQuest((active.data as Quest | null) ?? null);
-
     // The streak is alive if the goal was reached today or yesterday (or a freeze can cover yesterday).
     setStreak(
       streakInfo(
@@ -242,13 +233,54 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         (lastFreeze.data as { day: string } | null)?.day ?? null,
       ),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the range timestamps below
-  }, [supabase, fetchRange, rangeStartMs, rangeEndMs]);
+    setMetaLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
+  }, [supabase]);
+
+  /** After a change: reload the visible range and everything else. */
+  const refresh = useCallback(async () => {
+    await Promise.all([cache.load(new Date(rangeStartMs), new Date(rangeEndMs)), refreshMeta()]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
+  }, [refreshMeta, rangeStartMs, rangeEndMs]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data for the visible range
-    refresh();
-  }, [refresh]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading data on mount
+    refreshMeta();
+  }, [refreshMeta]);
+
+  // Paging: cached days show at once and are refreshed quietly, then the weeks either side are
+  // preloaded so the next page is instant too.
+  useEffect(() => {
+    const from = new Date(rangeStartMs);
+    const to = new Date(rangeEndMs);
+    const timer = setTimeout(
+      async () => {
+        await cache.load(from, to);
+        const week = startOfWeek(from);
+        await Promise.all([cache.ensure(addDays(week, -28), from), cache.ensure(to, addDays(week, 63))]);
+      },
+      // Flicking through several weeks quickly shouldn't refetch every one of them.
+      cache.isLoaded(from, to) ? 400 : 0,
+    );
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
+  }, [rangeStartMs, rangeEndMs]);
+
+  // Unfinished quests on screen (and today's) follow the latest scorer and deadline bonus;
+  // finished ones keep the XP they were settled with. Saved in the background.
+  useEffect(() => {
+    if (!metaLoaded) return;
+    const changes = new Map<string, Partial<Quest>>();
+    for (const q of [...days.flatMap((d) => byDay[dayKey(d)] ?? []), ...(byDay[todayKey] ?? [])]) {
+      if (changes.has(q.id) || isDeadline(q) || (q.status !== "planned" && q.status !== "active")) continue;
+      const { rank, xp } = scoreQuest(scoreInput(q), urgency);
+      if (rank !== q.difficulty || xp !== q.xp) changes.set(q.id, { difficulty: rank, xp });
+    }
+    if (!changes.size) return;
+    cache.patch(changes);
+    for (const [id, change] of changes) supabase.from("quests").update(change).eq("id", id).then();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
+  }, [metaLoaded, days, byDay, todayKey, urgency, supabase]);
 
   // Once per visit: re-sync calendar layers not synced in the last 6 hours.
   const autoSynced = useRef(false);
@@ -690,7 +722,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   async function reschedule(q: Quest, start: Date, duration: number) {
     const patch = { start_at: start.toISOString(), duration_min: duration };
     // Optimistic update so the block doesn't snap back while saving.
-    setQuests((qs) => qs.map((x) => (x.id === q.id ? { ...x, ...patch } : x)));
+    cache.patch(new Map([[q.id, patch]]));
     const { error } = await supabase.from("quests").update(patch).eq("id", q.id);
     if (error) setError(error.message);
     else {
