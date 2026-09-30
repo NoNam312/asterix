@@ -15,7 +15,7 @@ import { xpFor } from "@/lib/difficulty";
 import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
-import { JIRA_COLOR, JIRA_COLOR_2, JIRA_DRAG_TYPE, jiraKeyOf, type JiraIssue } from "@/lib/jira-issues";
+import { JIRA_DRAG_TYPE, JIRA_STYLE, jiraKeyOf, type JiraIssue } from "@/lib/jira-issues";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
@@ -412,8 +412,13 @@ function QuestBlock({
 }) {
   const start = new Date(quest.start_at);
   const end = addMinutes(start, quest.duration_min);
-  const cat = layer ? { color: layer.color, soft: `${layer.color}1f` } : (CATEGORIES[quest.category] ?? CATEGORIES.other);
   const jira = !layer && jiraKeyOf(quest.notes);
+  // Jira quests are purple whatever their category, so they stand out from study quests.
+  const cat = layer
+    ? { color: layer.color, soft: `${layer.color}1f` }
+    : jira
+      ? JIRA_STYLE
+      : (CATEGORIES[quest.category] ?? CATEGORIES.other);
   const height = Math.max((quest.duration_min / 60) * HOUR_HEIGHT - 2, 18);
   const compact = height < 40;
   const done = quest.status === "completed";
@@ -435,15 +440,13 @@ function QuestBlock({
         width: `calc(${100 / col.count}% - 4px)`,
         background: failed ? "var(--color-danger-soft)" : cat.soft,
         borderColor: failed ? "var(--color-danger)" : cat.color,
-        // Jira quests keep their category's background but get an Atlassian blue-to-purple edge.
-        ...(jira && !failed ? { borderImage: `linear-gradient(to bottom, ${JIRA_COLOR}, ${JIRA_COLOR_2}) 1` } : {}),
         ["--tw-ring-color" as string]: cat.color,
       }}
     >
       <div className={`flex items-baseline gap-1.5 ${compact ? "" : "flex-col gap-0"}`}>
         <span className="flex min-w-0 items-center gap-1">
           {layer && <CalendarDays size={11} className="shrink-0" style={{ color: layer.color }} />}
-          {jira && <SquareKanban size={11} className="shrink-0" style={{ color: JIRA_COLOR }} aria-label="From Jira" />}
+          {jira && <SquareKanban size={11} className="shrink-0" style={{ color: JIRA_STYLE.color }} aria-label="From Jira" />}
           {done && <Check size={12} className="shrink-0 text-xp" />}
           {failed && <X size={12} className="shrink-0 text-danger" />}
           {quest.difficulty && !done && !failed && <RankBadge rank={quest.difficulty as Rank} />}
