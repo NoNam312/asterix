@@ -129,6 +129,7 @@ type Toast =
 
 
 const SUMMARY_SEEN_KEY = "questlog:summary-seen";
+const SIDE_TAB_KEY = "questlog:side-tab";
 
 type Menu =
   | { kind: "quest"; quest: Quest; x: number; y: number }
@@ -164,6 +165,16 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [seriesById, setSeriesById] = useState<Map<string, QuestSeries>>(new Map());
   const [canRepeat, setCanRepeat] = useState(false);
   const [jira, setJira] = useState<{ issues: JiraIssue[]; error?: string } | null>(null);
+  const [sideTabPicked, setSideTab] = useState<"today" | "due" | "jira">(() => {
+    const saved = readStorage(SIDE_TAB_KEY);
+    return saved === "due" || saved === "jira" ? saved : "today";
+  });
+  // The Jira tab only exists when Jira is connected.
+  const sideTab = sideTabPicked === "jira" && !jira ? "today" : sideTabPicked;
+  function chooseSideTab(tab: typeof sideTabPicked) {
+    setSideTab(tab);
+    writeStorage(SIDE_TAB_KEY, tab);
+  }
 
   const days = useMemo(
     () =>
@@ -915,6 +926,12 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const sideTabs = [
+    { id: "today" as const, label: "Today", count: todayQuests.filter((q) => q.status === "planned" || q.status === "active").length, alert: false },
+    { id: "due" as const, label: "Due", count: dueSoon.length, alert: dueSoon.some((p) => p.share < 0.5 && p.deadline.due.getTime() - nowMs < 7 * 86_400_000) },
+    ...(jira ? [{ id: "jira" as const, label: "Jira", count: jira.issues.length, alert: false }] : []),
+  ];
+
   const earnedToday = todayQuests
     .filter((q) => q.status === "completed")
     .reduce((sum, q) => sum + q.xp, 0);
@@ -1041,56 +1058,84 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
 
         <CalendarLayers layers={layers} onChanged={refresh} />
 
-        <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
-
-        {jira && <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} />}
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">
-            Today&apos;s quests
-          </h3>
-          {todayQuests.length === 0 ? (
-            <p className="px-1 pt-2 text-xs text-faint">Nothing planned yet.</p>
-          ) : (
-            <ul className="mt-1 space-y-0.5">
-              {todayQuests.map((q) => {
-                const done = q.status === "completed";
-                const failed = q.status === "failed";
-                const color = CATEGORIES[q.category].color;
-                return (
-                  <li
-                    key={q.id}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setMenu({ kind: "quest", quest: q, x: e.clientX, y: e.clientY });
-                    }}
-                    className="flex items-center gap-1.5 rounded-md px-1 hover:bg-surface-hover"
-                  >
-                    <button
-                      title={done ? "Undo" : "Mark complete"}
-                      disabled={failed}
-                      onClick={() => runStatus(q.id, done ? "planned" : "completed")}
-                      className="grid size-4 shrink-0 place-items-center rounded border transition disabled:opacity-40"
-                      style={{ borderColor: color, background: done ? color : "transparent" }}
-                    >
-                      {done && <Check size={11} className="text-white" strokeWidth={3} />}
-                    </button>
-                    <button
-                      onClick={() => openEdit(q)}
-                      className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-xs"
-                    >
-                      <span
-                        className={`flex-1 truncate ${done ? "text-muted line-through" : ""} ${failed ? "text-danger line-through" : ""}`}
+        {/* Today / Due / Jira share one panel, so the sidebar never overflows. */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex gap-0.5 rounded-lg bg-canvas p-0.5 shadow-sm" role="tablist">
+            {sideTabs.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={sideTab === t.id}
+                onClick={() => chooseSideTab(t.id)}
+                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs transition ${
+                  sideTab === t.id ? "bg-surface font-medium text-ink" : "text-muted hover:text-ink"
+                }`}
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span className={`rounded-full px-1 text-[10px] tabular-nums ${t.alert ? "bg-danger-soft text-danger" : "text-faint"}`}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+            {sideTab === "due" ? (
+              dueSoon.length ? (
+                <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} hideTitle />
+              ) : (
+                <p className="px-1 pt-1 text-xs text-faint">No due dates in the next 3 weeks.</p>
+              )
+            ) : sideTab === "jira" && jira ? (
+              <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} hideTitle />
+            ) : (
+              <>
+              {todayQuests.length === 0 ? (
+                <p className="px-1 pt-2 text-xs text-faint">Nothing planned yet.</p>
+              ) : (
+                <ul className="mt-1 space-y-0.5">
+                  {todayQuests.map((q) => {
+                    const done = q.status === "completed";
+                    const failed = q.status === "failed";
+                    const color = CATEGORIES[q.category].color;
+                    return (
+                      <li
+                        key={q.id}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setMenu({ kind: "quest", quest: q, x: e.clientX, y: e.clientY });
+                        }}
+                        className="flex items-center gap-1.5 rounded-md px-1 hover:bg-surface-hover"
                       >
-                        {q.title}
-                      </span>
-                      <span className="text-faint">{formatTime(new Date(q.start_at))}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                        <button
+                          title={done ? "Undo" : "Mark complete"}
+                          disabled={failed}
+                          onClick={() => runStatus(q.id, done ? "planned" : "completed")}
+                          className="grid size-4 shrink-0 place-items-center rounded border transition disabled:opacity-40"
+                          style={{ borderColor: color, background: done ? color : "transparent" }}
+                        >
+                          {done && <Check size={11} className="text-white" strokeWidth={3} />}
+                        </button>
+                        <button
+                          onClick={() => openEdit(q)}
+                          className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-xs"
+                        >
+                          <span
+                            className={`flex-1 truncate ${done ? "text-muted line-through" : ""} ${failed ? "text-danger line-through" : ""}`}
+                          >
+                            {q.title}
+                          </span>
+                          <span className="text-faint">{formatTime(new Date(q.start_at))}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              </>
+            )}
+          </div>
         </div>
 
       </aside>

@@ -38,11 +38,14 @@ export function DueSoon({
   layers,
   onOpen,
   onPlan,
+  hideTitle,
 }: {
   items: Item[];
   layers: Map<string, CalendarLayer>;
   onOpen: (q: Quest) => void;
   onPlan: () => void;
+  /** Inside the sidebar tabs the tab already says "Due". */
+  hideTitle?: boolean;
 }) {
   if (!items.length) return null;
   const behind = items.some((p) => p.share < 1 && daysUntil(p.quest) <= 7);
@@ -51,7 +54,7 @@ export function DueSoon({
     <div>
       <div className="flex items-center justify-between px-1">
         <h3
-          className="text-[11px] font-medium uppercase tracking-wide text-muted"
+          className={`text-[11px] font-medium uppercase tracking-wide text-muted ${hideTitle ? "invisible" : ""}`}
           title="Work on a subject earns up to +50% XP as its due date gets close."
         >
           Due soon

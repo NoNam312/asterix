@@ -31,6 +31,7 @@ export function JiraPanel({
   planned,
   onPlan,
   draggable = true,
+  hideTitle,
 }: {
   issues: JiraIssue[];
   error?: string;
@@ -38,16 +39,18 @@ export function JiraPanel({
   planned: Map<string, Date>;
   onPlan: (issue: JiraIssue) => void;
   draggable?: boolean;
+  /** Inside the sidebar tabs: no heading, and every issue is listed (the tab scrolls). */
+  hideTitle?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const sorted = [...issues].sort(
     (a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.key.localeCompare(b.key),
   );
-  const shown = expanded ? sorted : sorted.slice(0, 5);
+  const shown = expanded || hideTitle ? sorted : sorted.slice(0, 5);
 
   return (
     <div>
-      <div className="flex items-center justify-between px-1">
+      <div className={`flex items-center justify-between px-1 ${hideTitle ? "hidden" : ""}`}>
         <h3
           className="text-[11px] font-medium uppercase tracking-wide text-muted"
           title={draggable ? "Drag an issue onto the calendar to plan it, or click to pick a time" : "Tap an issue to plan it"}
@@ -110,7 +113,7 @@ export function JiraPanel({
           );
         })}
       </ul>
-      {sorted.length > 5 && (
+      {sorted.length > 5 && !hideTitle && (
         <button onClick={() => setExpanded((x) => !x)} className="mt-0.5 px-1 text-[11px] text-accent hover:underline">
           {expanded ? "Show fewer" : `Show all ${sorted.length}`}
         </button>
