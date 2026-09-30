@@ -19,7 +19,6 @@ import {
   Snowflake,
   Lock,
   LockOpen,
-  NotebookText,
   Settings,
   LogOut,
   Pencil,
@@ -746,98 +745,102 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   return (
     <div className="flex h-dvh overflow-hidden">
       {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col gap-5 border-r border-line bg-surface p-4 md:flex">
-        <div className="flex items-center gap-2 px-1 font-semibold">
+      <aside className="hidden w-64 shrink-0 flex-col gap-4 border-r border-line bg-surface p-4 md:flex">
+        <div className="flex items-center gap-2 px-1">
           <span className="grid size-7 place-items-center rounded-md bg-ink text-canvas">
             <Swords size={14} />
           </span>
-          QuestLog
+          <span className="flex-1 font-semibold">QuestLog</span>
+          <Link href="/insights" title="Insights & achievements" className="rounded-md p-1.5 text-muted hover:bg-surface-hover hover:text-ink">
+            <ChartColumnBig size={15} />
+          </Link>
+          <Link href="/settings" title="Settings" className="rounded-md p-1.5 text-muted hover:bg-surface-hover hover:text-ink">
+            <Settings size={15} />
+          </Link>
+          <form action={signOut} className="flex">
+            <button title="Log out" className="rounded-md p-1.5 text-muted hover:bg-surface-hover hover:text-ink">
+              <LogOut size={15} />
+            </button>
+          </form>
         </div>
 
         <div className="rounded-lg bg-canvas p-3 shadow-sm">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium">{profile.username}</span>
-            <span className="flex items-center gap-1">
-              <span
-                title={describeStreak(streak)}
-                className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
-                  streak.current ? "bg-gold-soft text-gold" : "bg-surface text-faint"
-                }`}
-              >
-                <Flame size={12} /> {streak.current}
-              </span>
-              <span className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent">
-                Lv {lvl.level}
-              </span>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="flex-1 truncate font-medium">{profile.username}</span>
+            <span
+              title={describeStreak(streak)}
+              className={`flex items-center gap-0.5 rounded px-1.5 text-xs font-semibold ${
+                streak.current ? "bg-gold-soft text-gold" : "bg-surface text-faint"
+              }`}
+            >
+              <Flame size={12} /> {streak.current}
+            </span>
+            <span
+              title={`${lvl.intoLevel} / ${lvl.levelSize} XP to Lv ${lvl.level + 1}`}
+              className="rounded bg-accent-soft px-1.5 text-xs font-semibold text-accent"
+            >
+              Lv {lvl.level}
             </span>
           </div>
-          <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface">
-            <div
-              className="h-full rounded-full bg-accent transition-all"
-              style={{ width: `${lvl.progress * 100}%` }}
-            />
+          <div
+            className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-surface"
+            title={`${lvl.intoLevel} / ${lvl.levelSize} XP to Lv ${lvl.level + 1}`}
+          >
+            <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${lvl.progress * 100}%` }} />
           </div>
-          <p className="mt-1 text-[10px] text-faint">
-            {lvl.intoLevel} / {lvl.levelSize} XP to Lv {lvl.level + 1}
-          </p>
-          <div className="mt-3 flex justify-between text-[11px] text-muted">
-            <span>{streak.todayDone ? "Goal reached ✓" : "Today's goal"}</span>
-            <span>
-              <span className="font-semibold text-xp">{earnedToday}</span> / {profile.daily_xp_goal} XP
-            </span>
-          </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
-            <div
-              className="h-full rounded-full bg-xp transition-all"
-              style={{ width: `${Math.min(100, (earnedToday / profile.daily_xp_goal) * 100)}%` }}
-            />
-          </div>
+
           <button
             onClick={() => setSummary({ day: new Date() })}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-line py-1 text-xs text-muted hover:bg-surface hover:text-ink"
+            title="Open today's summary"
+            className="-mx-1 mt-2 block w-[calc(100%+0.5rem)] rounded-md px-1 py-1 text-left hover:bg-surface"
           >
-            <NotebookText size={12} /> Daily summary
+            <span className="flex justify-between text-[11px] text-muted">
+              <span>{streak.todayDone ? "Goal reached ✓" : "Today's goal"}</span>
+              <span>
+                <span className="font-semibold text-xp">{earnedToday}</span> / {profile.daily_xp_goal} XP
+              </span>
+            </span>
+            <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-surface">
+              <span
+                className="block h-full rounded-full bg-xp transition-all"
+                style={{ width: `${Math.min(100, (earnedToday / profile.daily_xp_goal) * 100)}%` }}
+              />
+            </span>
           </button>
-        </div>
 
-        <Link
-          href="/settings"
-          title="Focus lock settings"
-          className={`-mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition hover:brightness-95 ${
-            sitesUnlocked ? "bg-xp-soft text-xp" : "bg-accent-soft text-accent"
-          }`}
-        >
-          {sitesUnlocked ? <LockOpen size={14} /> : <Lock size={14} />}
-          <span className="flex-1">
-            <span className="font-semibold">{sitesUnlocked ? "Sites unlocked" : "Sites locked"}</span>
-            <span className="block opacity-80">
+          <Link
+            href="/settings"
+            title="Focus lock settings"
+            className={`mt-2 flex items-center gap-1.5 border-t border-line pt-2 text-[11px] ${
+              sitesUnlocked ? "text-xp" : "text-accent"
+            }`}
+          >
+            {sitesUnlocked ? <LockOpen size={12} className="shrink-0" /> : <Lock size={12} className="shrink-0" />}
+            <span className="shrink-0 font-semibold">{sitesUnlocked ? "Unlocked" : "Locked"}</span>
+            <span className="truncate text-muted">
+              ·{" "}
               {sitesUnlocked
                 ? earnedToday >= profile.daily_xp_goal
-                  ? "Goal reached. Enjoy your break!"
+                  ? "goal reached"
                   : scheduleFree
                     ? lockMode === "during_quests"
-                      ? "No quest right now"
-                      : "No quests left today"
-                    : `Emergency unlock until ${formatTime(emergencyUntil!)}`
+                      ? "no quest right now"
+                      : "no quests left today"
+                    : `emergency until ${formatTime(emergencyUntil!)}`
                 : questNow
-                  ? `During “${questNow.title}”`
-                  : `${profile.daily_xp_goal - earnedToday} XP to unlock today`}
-            </span>
-          </span>
-        </Link>
-
-        {extensionInstalled === false && (
-          <Link
-            href="/settings#extension"
-            className="-mt-3 flex items-start gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted hover:text-ink"
-          >
-            <TriangleAlert size={14} className="mt-0.5 shrink-0 text-gold" />
-            <span>
-              Focus lock isn&apos;t installed in this browser profile.{" "}
-              <span className="font-medium text-accent">Set it up →</span>
+                  ? `during “${questNow.title}”`
+                  : `${profile.daily_xp_goal - earnedToday} XP to unlock`}
             </span>
           </Link>
-        )}
+          {extensionInstalled === false && (
+            <Link href="/settings#extension" className="mt-1 flex items-center gap-1.5 text-[11px] text-muted hover:text-ink">
+              <TriangleAlert size={12} className="shrink-0 text-gold" />
+              <span className="truncate">
+                Not set up in this browser · <span className="font-medium text-accent">Set up</span>
+              </span>
+            </Link>
+          )}
+        </div>
 
         <MiniCalendar selected={date} onSelect={(d) => setDate(startOfDay(d))} />
 
@@ -893,25 +896,6 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           )}
         </div>
 
-        <div>
-          <Link
-            href="/insights"
-            className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink"
-          >
-            <ChartColumnBig size={14} /> Insights &amp; achievements
-          </Link>
-          <Link
-            href="/settings"
-            className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink"
-          >
-            <Settings size={14} /> Settings
-          </Link>
-          <form action={signOut}>
-            <button className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-ink">
-              <LogOut size={14} /> Log out
-            </button>
-          </form>
-        </div>
       </aside>
 
       {/* Main calendar */}

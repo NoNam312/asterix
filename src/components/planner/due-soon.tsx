@@ -16,6 +16,13 @@ function daysUntil(q: Quest) {
   return Math.round((day.getTime() - startOfDay(new Date()).getTime()) / DAY);
 }
 
+/** "today", "tmrw", "9d" */
+function shortDue(days: number) {
+  if (days <= 0) return "today";
+  if (days === 1) return "tmrw";
+  return `${days}d`;
+}
+
 function dueLabel(days: number) {
   if (days <= 0) return "today";
   if (days === 1) return "tomorrow";
@@ -42,7 +49,23 @@ export function DueSoon({
 
   return (
     <div>
-      <h3 className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">Due soon</h3>
+      <div className="flex items-center justify-between px-1">
+        <h3
+          className="text-[11px] font-medium uppercase tracking-wide text-muted"
+          title="Work on a subject earns up to +50% XP as its due date gets close."
+        >
+          Due soon
+        </h3>
+        {behind && (
+          <button
+            onClick={onPlan}
+            title="Plan study time for these"
+            className="flex items-center gap-1 rounded px-1 text-[11px] font-medium text-accent hover:bg-surface-hover"
+          >
+            <CalendarRange size={11} /> Plan
+          </button>
+        )}
+      </div>
       <ul className="mt-1 space-y-0.5">
         {items.map((p) => {
           const { deadline, quest } = p;
@@ -56,48 +79,39 @@ export function DueSoon({
               : covered === 0
                 ? `nothing planned · needs ~${hours(deadline.needMinutes)}`
                 : `${urgent ? "only " : ""}${hours(covered)} of ~${hours(deadline.needMinutes)} planned`;
+          const due = deadline.due.toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
           return (
             <li key={deadline.id}>
               <button
                 onClick={() => onOpen(quest)}
-                title={`${deadline.title}\nDue ${deadline.due.toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}${p.doneMinutes ? `\n${hours(p.doneMinutes)} done` : ""}${p.plannedMinutes ? `\n${hours(p.plannedMinutes)} still to do` : ""}`}
+                title={`${deadline.title}
+Due ${due} (${dueLabel(days)})
+${status}`}
                 className="w-full rounded-md px-1 py-1 text-left text-xs hover:bg-surface-hover"
               >
                 <span className="flex items-center gap-2">
                   <Flag size={11} className="shrink-0" style={{ color }} />
-                  <span className="min-w-0 flex-1 truncate font-medium">{deadline.label}</span>
-                </span>
-                <span className="mt-0.5 block truncate pl-[19px] text-[11px]">
-                  <span className={days <= 2 ? "font-medium text-danger" : "text-muted"}>Due {dueLabel(days)}</span>
-                  <span className={urgent ? "text-danger" : "text-faint"}>
-                    {" · "}
-                    {p.share >= 1 && <Check size={10} className="mr-0.5 inline text-xp" />}
-                    {status}
+                  <span className="min-w-0 flex-1 truncate">{deadline.label}</span>
+                  <span className={`shrink-0 text-[11px] tabular-nums ${days <= 2 ? "font-medium text-danger" : "text-faint"}`}>
+                    {shortDue(days)}
                   </span>
                 </span>
-                <span className="mt-1 ml-[19px] block h-1 overflow-hidden rounded-full bg-line">
-                  <span
-                    className={`block h-full rounded-full ${p.share >= 1 ? "bg-xp" : urgent ? "bg-danger" : "bg-accent"}`}
-                    style={{ width: `${Math.max(3, p.share * 100)}%` }}
-                  />
+                <span className="mt-1 ml-[19px] flex items-center gap-1.5">
+                  <span className="block h-1 flex-1 overflow-hidden rounded-full bg-line">
+                    <span
+                      className={`block h-full rounded-full ${p.share >= 1 ? "bg-xp" : urgent ? "bg-danger" : "bg-accent"}`}
+                      style={{ width: `${Math.max(3, p.share * 100)}%` }}
+                    />
+                  </span>
+                  {p.share >= 1 && <Check size={10} className="shrink-0 text-xp" />}
                 </span>
+                {/* Only spell it out when it needs attention. */}
+                {urgent && <span className="mt-0.5 block truncate pl-[19px] text-[11px] text-danger">{status}</span>}
               </button>
             </li>
           );
         })}
       </ul>
-      {behind && (
-        <button
-          onClick={onPlan}
-          className="mt-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[11px] font-medium text-accent hover:bg-surface-hover"
-        >
-          <CalendarRange size={12} />
-          Plan study time for these
-        </button>
-      )}
-      <p className="mt-1 px-1 text-[10px] leading-snug text-faint">
-        Work on a subject earns up to +50% XP as its due date gets close.
-      </p>
     </div>
   );
 }
