@@ -29,6 +29,11 @@ export const JIRA_DRAG_TYPE = "application/x-questlog-jira";
 /** The notes marker linking a quest to its issue ("jira:ABC-12"). */
 export const jiraRef = (key: string) => `jira:${key}`;
 
+/** A Jira quest's title without its "KAN-39: " prefix (the key is shown as a badge instead). */
+export function withoutKey(title: string, key: string) {
+  return title.startsWith(`${key}: `) ? title.slice(key.length + 2) : title;
+}
+
 export function jiraKeyOf(notes: string | null | undefined) {
   return notes?.match(/\bjira:([A-Z][A-Z0-9_]+-\d+)\b/)?.[1] ?? null;
 }

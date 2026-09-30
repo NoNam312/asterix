@@ -8,14 +8,15 @@ import {
   minutesIntoDay,
   startOfDay,
 } from "@/lib/dates";
-import { CalendarDays, Check, Flag, Repeat, SquareKanban, X } from "lucide-react";
+import { CalendarDays, Check, Flag, Repeat, X } from "lucide-react";
 import type { Rank } from "@/lib/difficulty";
 import { haptic } from "@/lib/haptics";
 import { xpFor } from "@/lib/difficulty";
 import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
-import { JIRA_COLOR, JIRA_DRAG_TYPE, jiraKeyOf, type JiraIssue } from "@/lib/jira-issues";
+import { JIRA_DRAG_TYPE, jiraKeyOf, withoutKey, type JiraIssue } from "@/lib/jira-issues";
+import { JiraKeyBadge } from "./jira-key-badge";
 
 const HOUR_HEIGHT = 52; // px per hour
 const SNAP = 15; // minutes
@@ -434,20 +435,19 @@ function QuestBlock({
         left: `calc(${(col.index / col.count) * 100}% + 2px)`,
         width: `calc(${100 / col.count}% - 4px)`,
         background: failed ? "var(--color-danger-soft)" : cat.soft,
-        // Jira quests keep their category's background but get a purple edge.
-        borderColor: failed ? "var(--color-danger)" : jira ? JIRA_COLOR : cat.color,
+        borderColor: failed ? "var(--color-danger)" : cat.color,
         ["--tw-ring-color" as string]: cat.color,
       }}
     >
       <div className={`flex items-baseline gap-1.5 ${compact ? "" : "flex-col gap-0"}`}>
         <span className="flex min-w-0 items-center gap-1">
           {layer && <CalendarDays size={11} className="shrink-0" style={{ color: layer.color }} />}
-          {jira && <SquareKanban size={11} className="shrink-0" style={{ color: JIRA_COLOR }} aria-label="From Jira" />}
+          {jira && <JiraKeyBadge issueKey={jira} />}
           {done && <Check size={12} className="shrink-0 text-xp" />}
           {failed && <X size={12} className="shrink-0 text-danger" />}
           {quest.difficulty && !done && !failed && <RankBadge rank={quest.difficulty as Rank} />}
           <span className={`truncate font-medium text-ink ${done || failed ? "line-through" : ""}`}>
-            {quest.title}
+            {jira ? withoutKey(quest.title, jira) : quest.title}
           </span>
           {quest.recurrence_id && <Repeat size={10} className="shrink-0 text-muted" aria-label="Repeats" />}
         </span>

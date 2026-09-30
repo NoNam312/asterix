@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, Play, Repeat, SquareKanban, X } from "lucide-react";
-import { JIRA_COLOR, jiraKeyOf } from "@/lib/jira-issues";
+import { Check, Play, Repeat, X } from "lucide-react";
+import { jiraKeyOf, withoutKey } from "@/lib/jira-issues";
+import { JiraKeyBadge } from "./jira-key-badge";
 import { formatDuration, formatTime } from "@/lib/dates";
 import type { Rank } from "@/lib/difficulty";
 import { CATEGORIES, type Quest, type QuestStatus } from "@/lib/quests";
@@ -56,11 +57,12 @@ export function MobileQuestList({ quests, onOpen, onStatus, onNew }: Props) {
             <button onClick={() => onOpen(q)} className="min-w-0 flex-1 text-left">
               <span className="flex items-center gap-1.5">
                 {q.difficulty && <RankBadge rank={q.difficulty as Rank} />}
+                {jiraKeyOf(q.notes) && <JiraKeyBadge issueKey={jiraKeyOf(q.notes)!} />}
                 <span className={`truncate font-medium ${done || failed ? "text-muted line-through" : ""}`}>
-                  {q.title}
+                  {jiraKeyOf(q.notes) ? withoutKey(q.title, jiraKeyOf(q.notes)!) : q.title}
                 </span>
                 {q.recurrence_id && <Repeat size={12} className="shrink-0 text-muted" aria-label="Repeats" />}
-                {jiraKeyOf(q.notes) && <SquareKanban size={12} className="shrink-0" style={{ color: JIRA_COLOR }} aria-label="From Jira" />}
+
               </span>
               <span className="mt-0.5 block text-xs text-muted">
                 {formatTime(start)} · {formatDuration(q.duration_min)} ·{" "}
