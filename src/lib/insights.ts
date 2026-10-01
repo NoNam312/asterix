@@ -3,11 +3,13 @@
 import { assessQuest } from "./difficulty.ts";
 import { CATEGORIES, isDeadline, type Category, type Quest } from "./quests.ts";
 import { subjectOfTitle, type Subject } from "./urgency.ts";
+import { jiraKeyOf } from "./jira-issues.ts";
 
 export type InsightQuest = Pick<
   Quest,
   | "id"
   | "title"
+  | "notes"
   | "category"
   | "start_at"
   | "duration_min"
@@ -33,7 +35,12 @@ export const minutesOf = (q: InsightQuest) => q.worked_min ?? q.duration_min;
  * What a quest was about, for grouping: a subject you take ("Models of Computation"), a study
  * area the scorer recognised ("Computer graphics"), or the category ("Gym").
  */
-export function subjectLabel(q: Pick<InsightQuest, "title" | "category">, subjects: Map<string, Subject>) {
+export function subjectLabel(
+  q: Pick<InsightQuest, "title" | "category"> & { notes?: string | null },
+  subjects: Map<string, Subject>,
+) {
+  // Quests made from Jira issues are grouped together, whatever they're about.
+  if (jiraKeyOf(q.notes)) return "Jira";
   if (q.category !== "study" && q.category !== "other") return CATEGORIES[q.category].label;
   const subject = subjectOfTitle(q.title, subjects);
   if (subject) return subject;

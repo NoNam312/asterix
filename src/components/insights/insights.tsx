@@ -10,6 +10,7 @@ import { markSeen, unseenIds } from "@/lib/achievements-seen";
 import { loadHistory, type History } from "@/lib/history";
 import { overruns, weekStats, weeklyXp, type WeekStats } from "@/lib/insights";
 import { CATEGORIES } from "@/lib/quests";
+import { JIRA_COLOR } from "@/lib/jira-issues";
 import { describeStreak, streakInfo } from "@/lib/streak";
 import { AchievementCard } from "./achievement-badge";
 
@@ -176,7 +177,7 @@ function InsightsView({ totalXp, goal }: { totalXp: number; goal: number }) {
               <Card title="XP by week" note={`Last ${TREND_WEEKS} weeks`}>
                 <TrendChart weeks={trend} selected={week} onSelect={setWeek} />
               </Card>
-              <Card title="Time per subject" note="Completed quests">
+              <Card title="Time per quest" note="Completed quests">
                 <Subjects stats={stats} />
               </Card>
               <Card title="Completion" note="Your own quests">
@@ -241,8 +242,9 @@ function DailyChart({ stats, goal }: { stats: WeekStats; goal: number }) {
           const reached = d.xp >= goal;
           return (
             <div key={d.date.toISOString()} className="group relative flex h-full flex-1 flex-col justify-end">
-              <span className="mb-0.5 text-center text-[10px] tabular-nums text-muted opacity-0 transition group-hover:opacity-100">
-                {d.xp}
+              {/* Always shown: phones can't hover. */}
+              <span className="mb-0.5 text-center text-[10px] tabular-nums text-muted">
+                {d.xp > 0 ? d.xp : ""}
               </span>
               <div
                 className={`w-full rounded-t-md ${reached ? "bg-xp" : "bg-accent/70"}`}
@@ -290,8 +292,8 @@ function TrendChart({
               className="group flex h-full flex-1 flex-col justify-end"
               title={`Week of ${w.start.toLocaleDateString([], { day: "numeric", month: "short" })}: ${w.xp} XP`}
             >
-              <span className={`mb-0.5 text-center text-[10px] tabular-nums ${active ? "text-ink" : "text-muted opacity-0 group-hover:opacity-100"}`}>
-                {w.xp}
+              <span className={`mb-0.5 text-center text-[10px] tabular-nums ${active ? "font-semibold text-ink" : "text-muted"}`}>
+                {w.xp > 0 ? w.xp : ""}
               </span>
               <span
                 className={`block w-full rounded-t-md transition ${active ? "bg-accent" : "bg-accent/30 group-hover:bg-accent/50"}`}
@@ -324,7 +326,7 @@ function Subjects({ stats }: { stats: WeekStats }) {
             <span className="shrink-0 tabular-nums text-muted">{hours(s.minutes)}</span>
           </div>
           <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface">
-            <div className="h-full rounded-full" style={{ width: `${(s.minutes / max) * 100}%`, background: CATEGORIES[s.category].color }} />
+            <div className="h-full rounded-full" style={{ width: `${(s.minutes / max) * 100}%`, background: s.name === "Jira" ? JIRA_COLOR : CATEGORIES[s.category].color }} />
           </div>
         </li>
       ))}
