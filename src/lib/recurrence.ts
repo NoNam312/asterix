@@ -32,10 +32,15 @@ export const WEEK_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
 const same = (a: Weekday[], b: Weekday[]) => a.length === b.length && b.every((d) => a.includes(d));
 
-export function repeatPreset(days: Weekday[] | null): "none" | "daily" | "weekdays" | "custom" {
+/** Which Repeat option a set of days matches. `weekday` is the quest's own day (for "Every week"). */
+export function repeatPreset(
+  days: Weekday[] | null,
+  weekday?: Weekday,
+): "none" | "weekly" | "daily" | "weekdays" | "custom" {
   if (!days?.length) return "none";
   if (same(days, EVERY_DAY)) return "daily";
   if (same(days, WEEKDAYS)) return "weekdays";
+  if (weekday !== undefined && same(days, [weekday])) return "weekly";
   return "custom";
 }
 

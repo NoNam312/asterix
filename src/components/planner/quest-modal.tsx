@@ -73,7 +73,10 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   const [categoryPicked, setCategoryPicked] = useState(!!initial.id);
   const [autoCategory, setAutoCategory] = useState(false);
   const isNew = !initial.id;
-  const [repeatMode, setRepeatMode] = useState(() => repeatPreset(initial.repeat ?? null));
+  const [repeatMode, setRepeatMode] = useState(() =>
+    repeatPreset(initial.repeat ?? null, new Date(`${initial.date}T12:00`).getDay() as Weekday),
+  );
+  const questWeekday = new Date(`${draft.date}T12:00`).getDay() as Weekday;
   const [pickedScope, setScope] = useState<Scope>("this");
   // Kept out of the way until wanted: the full score breakdown, and repeat & notes.
   const [showScore, setShowScore] = useState(false);
@@ -311,7 +314,12 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               type="date"
               required
               value={draft.date}
-              onChange={(e) => set("date", e.target.value)}
+              onChange={(e) => {
+                const date = e.target.value;
+                // "Every week" follows the quest's day.
+                const day = new Date(`${date}T12:00`).getDay() as Weekday;
+                setDraft((d) => ({ ...d, date, ...(repeatMode === "weekly" && !Number.isNaN(day) ? { repeat: [day] } : {}) }));
+              }}
               className={inputClass}
             />
           </Labeled>
@@ -370,7 +378,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
                   "repeat",
                   mode === "none"
                     ? null
-                    : mode === "daily"
+                    : mode === "weekly"
+                      ? [weekday]
+                      : mode === "daily"
                       ? EVERY_DAY
                       : mode === "weekdays"
                         ? WEEKDAYS
@@ -382,6 +392,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               className={inputClass}
             >
               <option value="none">Doesn&apos;t repeat</option>
+              <option value="weekly">
+                Every week on {new Date(2026, 0, 4 + questWeekday).toLocaleDateString([], { weekday: "long" })}
+              </option>
               <option value="daily">Every day</option>
               <option value="weekdays">Every weekday (Mon–Fri)</option>
               <option value="custom">Custom days…</option>
