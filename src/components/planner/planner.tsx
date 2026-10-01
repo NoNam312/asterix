@@ -96,6 +96,7 @@ import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
 import { JiraPanel } from "./jira-panel";
+import { MobileBossList, MobileJiraList } from "./mobile-lists";
 import { JiraStatusList } from "./jira-status";
 import { DeadlineModal, splitNotes } from "./deadline-modal";
 import { bossOf } from "@/lib/boss";
@@ -1500,18 +1501,16 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               {sideTab === "due" ? (
-                <div className="px-4 py-3">
-                  {dueSoon.length ? (
-                    <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} onMenu={(quest, x, y) => setMenu({ kind: "deadline", quest, x, y })} defeated={defeatedBosses} hideTitle />
-                  ) : (
-                    <p className="py-10 text-center text-sm text-faint">No due dates in the next 3 weeks.</p>
-                  )}
-                </div>
+                <MobileBossList items={dueSoon} defeated={defeatedBosses} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
               ) : sideTab === "jira" && jira ? (
-                <div className="px-4 py-3">
-                  <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={applyJiraStatus} onStatusFailed={jiraFailed} draggable={false} hideTitle />
-                  <p className="mt-3 text-center text-xs text-faint">Tap an issue to plan when to work on it.</p>
-                </div>
+                <MobileJiraList
+                  issues={jira.issues}
+                  error={jira.error}
+                  planned={jiraPlanned}
+                  onPlan={planIssue}
+                  onStatusChanged={applyJiraStatus}
+                  onStatusFailed={jiraFailed}
+                />
               ) : (
                 <MobileQuestList
                   quests={quests.filter((q) => !isDeadline(q))}

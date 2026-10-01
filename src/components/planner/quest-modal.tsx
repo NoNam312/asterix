@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, Flag, Play, Repeat, RotateCcw, Trash2, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Flag, Play, Repeat, RotateCcw, Trash2, X } from "lucide-react";
+import { RankBadge } from "./rank-badge";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
@@ -64,6 +65,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   const isNew = !initial.id;
   const [repeatMode, setRepeatMode] = useState(() => repeatPreset(initial.repeat ?? null));
   const [pickedScope, setScope] = useState<Scope>("this");
+  // Kept out of the way until wanted: the full score breakdown, and repeat & notes.
+  const [showScore, setShowScore] = useState(false);
+  const [showMore, setShowMore] = useState(!!initial.recurrenceId || !!initial.repeat || !!initial.notes);
   const repeating = !!initial.recurrenceId;
   const repeatChanged =
     (initial.repeat ?? []).length !== (draft.repeat ?? []).length ||
@@ -172,6 +176,39 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         {draft.notes && imported && <p className="mt-2 text-sm text-muted">{draft.notes}</p>}
 
         {draft.title.trim() && !deadline && (
+          <button
+            type="button"
+            onClick={() => setShowScore((v) => !v)}
+            aria-expanded={showScore}
+            className="mt-3 flex w-full items-center gap-2 rounded-lg bg-surface px-3 py-2 text-left text-sm hover:bg-surface-hover"
+          >
+            <RankBadge rank={assessment.rank} size="lg" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">
+                Rank {assessment.rank} ·{" "}
+                {initial.status === "failed" ? (
+                  <span className="text-danger">−{initial.penalty ?? 0} XP</span>
+                ) : (
+                  <span className="text-xp">+{finished && initial.xp !== undefined ? initial.xp : assessment.xp} XP</span>
+                )}
+                {assessment.urgency && (
+                  <span className="ml-1.5 text-xs font-medium text-accent">+{Math.round(assessment.urgency.bonus * 100)}% due soon</span>
+                )}
+              </span>
+              <span className="block truncate text-xs text-muted">
+                {assessment.detected
+                  .filter((d) => d.kind === "subject" || d.kind === "task")
+                  .map((d) => d.label)
+                  .join(" · ") || "Tap to see how it's scored"}
+              </span>
+            </span>
+            <ChevronDown size={16} className={`shrink-0 text-muted transition-transform ${showScore ? "rotate-180" : ""}`} />
+          </button>
+        )}
+        {draft.title.trim() && !deadline && !showScore && assessment.warning && (
+          <p className="mt-2 text-xs text-gold-ink">⚠ {assessment.warning}</p>
+        )}
+        {draft.title.trim() && !deadline && showScore && (
           <ScorePanel
             assessment={assessment}
             minutes={draft.duration}
@@ -192,7 +229,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
 
         {!imported && (
         <>
-        <div className="mt-4 flex flex-wrap gap-1.5">
+        <div className="-mx-5 mt-4 flex gap-1.5 overflow-x-auto px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {CATEGORY_KEYS.map((key) => {
             const cat = CATEGORIES[key];
             const active = draft.category === key;
@@ -205,7 +242,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
                   setCategoryPicked(true);
                   setAutoCategory(false);
                 }}
-                className="rounded-full border px-2.5 py-1 text-xs font-medium transition"
+                className="shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition"
                 style={
                   active
                     ? { background: cat.soft, borderColor: cat.color, color: cat.color }
@@ -216,7 +253,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               </button>
             );
           })}
-          {autoCategory && <span className="self-center text-[11px] text-faint">auto-detected</span>}
+          {autoCategory && <span className="shrink-0 self-center text-[11px] text-faint">auto-detected</span>}
           {!autoCategory &&
             draft.title.trim() &&
             assessment.suggestedCategory &&
@@ -224,7 +261,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               <button
                 type="button"
                 onClick={() => set("category", assessment.suggestedCategory!)}
-                className="self-center text-[11px] text-accent hover:underline"
+                className="shrink-0 self-center text-[11px] text-accent hover:underline"
               >
                 Looks like {CATEGORIES[assessment.suggestedCategory].label} · switch
               </button>
@@ -266,8 +303,23 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           </Labeled>
         </div>
 
-        {canRepeat && (
-          <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          aria-expanded={showMore}
+          className="mt-3 flex w-full items-center gap-2 rounded-md py-1 text-left text-xs font-medium uppercase tracking-wide text-muted hover:text-ink"
+        >
+          <Repeat size={12} /> Repeat &amp; notes
+          {!showMore && (draft.repeat || draft.notes) && (
+            <span className="truncate font-normal normal-case tracking-normal text-faint">
+              {[draft.repeat && describeRepeat(draft.repeat), draft.notes && "notes added"].filter(Boolean).join(" · ")}
+            </span>
+          )}
+          <ChevronDown size={14} className={`ml-auto shrink-0 transition-transform ${showMore ? "rotate-180" : ""}`} />
+        </button>
+
+        {showMore && canRepeat && (
+          <div className="mt-2">
             <span className="mb-1 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted">
               <Repeat size={11} /> Repeat
             </span>
@@ -351,6 +403,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           </div>
         )}
 
+        {showMore && (
         <Labeled label="Notes" className="mt-3">
           <textarea
             value={draft.notes}
@@ -360,11 +413,12 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             className={`${inputClass} resize-none`}
           />
         </Labeled>
+        )}
         </>
         )}
 
         {!isNew && !deadline && (
-          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-line pt-4">
+          <div className="mt-4 grid auto-cols-fr grid-flow-col gap-2 border-t border-line pt-4 [&>button]:justify-center">
             {initial.status === "planned" && (
               <>
                 <ActionButton onClick={() => changeStatus("active")} disabled={saving} tone="accent">
@@ -405,9 +459,11 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             <button
               type="button"
               onClick={async () => setError(await onDelete(initial.id!, scope))}
+              title={repeating && scope === "future" ? "Delete this and upcoming repeats" : "Delete quest"}
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-danger hover:bg-danger-soft"
             >
-              <Trash2 size={14} /> {repeating && scope === "future" ? "Delete this & upcoming" : "Delete"}
+              <Trash2 size={15} />
+              {repeating && scope === "future" ? "This & upcoming" : <span className="sr-only">Delete</span>}
             </button>
           )}
           <div className="flex-1" />
