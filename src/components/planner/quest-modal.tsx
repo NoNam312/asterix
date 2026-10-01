@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CalendarDays, Check, ChevronDown, Flag, Play, Repeat, RotateCcw, Trash2, X } from "lucide-react";
 import { RankBadge } from "./rank-badge";
 import { formatDuration } from "@/lib/dates";
@@ -57,6 +57,14 @@ type Props = {
 
 export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus, urgency, canRepeat }: Props) {
   const [draft, setDraft] = useState(initial);
+  // The title box grows to fit its text.
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft.title]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   // New quests pick their category from the title until you choose one yourself.
@@ -138,10 +146,19 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           </button>
         </div>
 
-        <input
+        {/* A textarea so long titles (e.g. Jira issues) wrap instead of being cut off. */}
+        <textarea
+          ref={titleRef}
+          rows={1}
           autoFocus={!imported}
           readOnly={imported}
           value={draft.title}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
           onChange={(e) => {
             const title = e.target.value;
             if (categoryPicked) return set("title", title);
@@ -156,7 +173,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           }}
           placeholder="What's the quest? e.g. Chemistry past paper"
           maxLength={200}
-          className="mt-3 w-full border-none text-xl font-semibold outline-none placeholder:text-faint"
+          className="input-large mt-2 block w-full resize-none overflow-hidden border-none bg-transparent text-lg font-semibold leading-snug outline-none placeholder:text-faint"
         />
 
         {imported && (
@@ -515,7 +532,7 @@ function ActionButton({
 }
 
 const inputClass =
-  "w-full rounded-md border border-line bg-canvas px-2 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft";
+  "w-full rounded-md border border-line bg-canvas px-2 py-1 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft";
 
 function Labeled({
   label,

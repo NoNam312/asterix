@@ -157,7 +157,8 @@ export function xpFor(xpPerHour: number, minutes: number) {
 }
 
 export function assessQuest(input: QuestInput): Assessment {
-  const f = extractFeatures(input);
+  // A Jira key at the start ("KAN-102: …") names the ticket, not a course or the difficulty.
+  const f = extractFeatures({ ...input, title: input.title.replace(/^[A-Z][A-Z0-9_]*-\d+:\s*/, "") });
   // Judge difficulty at a one-hour baseline: the rank says how demanding the work is,
   // and time is paid separately (XP per hour × hours), so XP grows in step with effort.
   const x = Object.fromEntries(

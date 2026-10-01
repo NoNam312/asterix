@@ -91,11 +91,12 @@ body {
   }
 }
 
-/* iOS zooms into inputs smaller than 16px; keep them at 16px on phones. */
+/* iOS zooms into inputs smaller than 16px; keep them at least 16px on phones.
+   Inputs marked .input-large (like a quest's title) keep their own, bigger size. */
 @media (max-width: 767px) {
-  input,
+  input:not(.input-large),
   select,
-  textarea {
+  textarea:not(.input-large) {
     font-size: 16px !important;
   }
 }

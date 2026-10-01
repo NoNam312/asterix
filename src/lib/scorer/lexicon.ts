@@ -70,6 +70,10 @@ export const TASK_TYPES: TaskType[] = [
     "portfolio site", "side project", "personal project", "github", "open source", "hackathon", "prototype", "mvp",
     "script", "automation", "bot", "set up", "setup", "integrate", "database", "api", "landing page", "extension",
     "project", "portfolio",
+    // Software work, e.g. Jira tickets
+    "test coverage", "unit test", "unit tests", "integration tests", "write tests", "test cases", "pull request",
+    "code review", "backend", "frontend", "endpoint", "endpoints", "importer", "data pipeline", "dashboard", "schema",
+    "domain model", "error handling", "edge cases", "jira", "ticket", "tickets",
   ], studyAlt: { words: ["project", "portfolio", "presentation", "code", "coding", "program"], type: "assessment" } },
   { id: "project-design", label: "Designing", domain: "project", words: [
     "design", "redesign", "mockup", "mockups", "wireframe", "wireframes", "figma", "logo", "ui", "user flow",
@@ -77,7 +81,8 @@ export const TASK_TYPES: TaskType[] = [
   ], studyAlt: { words: ["design"], type: "assessment" } },
   { id: "project-plan", label: "Planning", domain: "project", words: [
     "brainstorm", "brainstorming", "outline", "roadmap", "ideation", "project plan", "project planning", "spec",
-    "research ideas", "plan project", "plan the project", "user stories",
+    "research ideas", "plan project", "plan the project", "user stories", "user story", "sprint planning",
+    "sprint review", "sprint retro", "retrospective", "backlog", "from sprint",
   ], studyAlt: { words: ["outline", "brainstorm", "brainstorming"], type: "study-session" } },
   { id: "project-content", label: "Writing and content", domain: "project", words: [
     "blog post", "blog", "write up", "writeup", "readme", "documentation", "docs", "article", "newsletter",
@@ -143,7 +148,7 @@ export const TASK_TYPES: TaskType[] = [
   ] },
   { id: "social", label: "Social", domain: "social", words: [
     "meet friends", "meet up", "meetup", "hang out", "hangout", "catch up with", "coffee with", "coffee", "lunch with",
-    "dinner with", "drinks", "party", "date", "date night", "visit", "visit grandma", "visit family", "call mum",
+    "dinner with", "drinks", "party", "first date", "dinner date", "coffee date", "on a date", "date night", "visit", "visit grandma", "visit family", "call mum",
     "call mom", "call dad", "call grandma", "call family", "call friend", "facetime", "birthday", "birthday party",
     "bbq", "picnic", "game night", "friends", "family dinner", "family time", "wedding", "brunch", "sleepover",
   ], studyAlt: { words: ["friends", "coffee", "meet up", "meetup"], type: "study-session" } },
