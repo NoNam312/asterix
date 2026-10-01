@@ -96,6 +96,8 @@ import { PlanWeekDialog } from "./plan-week-dialog";
 import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
 import { JiraPanel } from "./jira-panel";
+import { TaskList } from "./task-list";
+import { questFromTask, TASK_APPS, taskRefOf, type ExternalTask, type TaskProvider } from "@/lib/task-apps";
 import { MobileBossList, MobileJiraList } from "./mobile-lists";
 import { JiraStatusList } from "./jira-status";
 import { DeadlineModal, splitNotes } from "./deadline-modal";
@@ -194,13 +196,19 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [seriesById, setSeriesById] = useState<Map<string, QuestSeries>>(new Map());
   const [canRepeat, setCanRepeat] = useState(false);
+  // Tasks from other apps (Todoist, GitHub, Trello, Linear, Asana, ClickUp) connected in Settings.
+  const [apps, setApps] = useState<{
+    tasks: ExternalTask[];
+    errors: Partial<Record<TaskProvider, string>>;
+    connected: number;
+  } | null>(null);
   const [jira, setJira] = useState<{ issues: JiraIssue[]; error?: string; questCategory?: Category | null } | null>(null);
   const [sideTabPicked, setSideTab] = useState<"today" | "due" | "jira">(() => {
     const saved = readStorage(SIDE_TAB_KEY);
     return saved === "due" || saved === "jira" ? saved : "today";
   });
-  // The Jira tab only exists when Jira is connected.
-  const sideTab = sideTabPicked === "jira" && !jira ? "today" : sideTabPicked;
+  // The Jira / Tasks tab only exists when Jira or another task app is connected.
+  const sideTab = sideTabPicked === "jira" && !jira && !apps ? "today" : sideTabPicked;
   function chooseSideTab(tab: typeof sideTabPicked) {
     setSideTab(tab);
     writeStorage(SIDE_TAB_KEY, tab);
@@ -350,6 +358,23 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
   }, [metaLoaded, days, byDay, todayKey, urgency, supabase]);
 
+  // Tasks from other apps (Todoist, GitHub, Trello, Linear, Asana, ClickUp) connected in Settings.
+  const loadApps = useCallback(() => {
+    fetch("/api/tasks")
+      .then((r) => r.json())
+      .then((res) =>
+        setApps(
+          res.ready && res.connections?.length
+            ? { tasks: res.tasks ?? [], errors: res.errors ?? {}, connected: res.connections.length }
+            : null,
+        ),
+      )
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    loadApps();
+  }, [loadApps]);
+
   // Jira issues assigned to you (only if Jira is connected in Settings); reloaded after a status change.
   const loadJira = useCallback(() => {
     fetch("/api/jira")
@@ -382,6 +407,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   }
 
   // After completing a quest made from a Jira issue: offer to move the issue to Done.
+  const [taskDone, setTaskDone] = useState<{ provider: TaskProvider; id: string; state: "ask" | "moving" | "moved" | string } | null>(null);
   const [jiraDone, setJiraDone] = useState<{ key: string; state: "ask" | "moving" | "moved" | string } | null>(null);
 
   async function markJiraDone(key: string) {
@@ -408,6 +434,23 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       for (const q of qs) {
         const key = q.status === "planned" || q.status === "active" ? jiraKeyOf(q.notes) : null;
         if (!key) continue;
+        const start = new Date(q.start_at);
+        const cur = next.get(key);
+        if (!cur || start < cur) next.set(key, start);
+      }
+    }
+    return next;
+  }, [byDay, todayKey]);
+
+  // When each app task is next planned as a quest, by "provider:id".
+  const tasksPlanned = useMemo(() => {
+    const next = new Map<string, Date>();
+    for (const [day, qs] of Object.entries(byDay)) {
+      if (day < todayKey) continue;
+      for (const q of qs) {
+        const ref = q.status === "planned" || q.status === "active" ? taskRefOf(q.notes) : null;
+        if (!ref) continue;
+        const key = `${ref.provider}:${ref.id}`;
         const start = new Date(q.start_at);
         const cur = next.get(key);
         if (!cur || start < cur) next.set(key, start);
@@ -610,6 +653,49 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     refresh();
   }
 
+  /** Click an app task: open it as a new quest to choose when to work on it. */
+  function planTask(task: ExternalTask) {
+    const { title, notes, duration } = questFromTask(task);
+    const start = nextHalfHour(date);
+    const category = scoreQuest({ title, notes, category: "study", durationMin: duration, start }, urgency).suggestedCategory ?? "other";
+    setDraft({ title, notes, duration, category, date: toDateInput(start), time: toTimeInput(start), status: "planned" });
+  }
+
+  /** Drop an app task on the calendar: it becomes a quest at that time. */
+  async function dropTask(task: ExternalTask, start: Date) {
+    const { title, notes, duration } = questFromTask(task);
+    const category = scoreQuest({ title, notes, category: "study", durationMin: duration, start }, urgency).suggestedCategory ?? "other";
+    const { rank, xp } = scoreQuest({ title, notes, category, durationMin: duration, start }, urgency);
+    const { data, error } = await supabase
+      .from("quests")
+      .insert({ title, notes, category, start_at: start.toISOString(), duration_min: duration, difficulty: rank, xp })
+      .select("id")
+      .single();
+    if (error) return setError(error.message);
+    pushUndo(`Planned “${task.title}” for ${start.toLocaleDateString([], { weekday: "short" })} ${formatTime(start)}`, () =>
+      supabase.from("quests").delete().eq("id", data.id),
+    );
+    refresh();
+  }
+
+  /** Marks a task done in its app; it leaves the list straight away. */
+  async function completeTask(task: Pick<ExternalTask, "provider" | "id">) {
+    setApps((cur) => cur && { ...cur, tasks: cur.tasks.filter((t) => !(t.provider === task.provider && t.id === task.id)) });
+    const res = await fetch("/api/tasks/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(task),
+    })
+      .then((r) => r.json())
+      .catch(() => ({ error: "Couldn't reach the app." }));
+    if (res.error) {
+      setError(`${TASK_APPS[task.provider].name}: ${res.error}`);
+      loadApps();
+      return res.error as string;
+    }
+    return null;
+  }
+
   const repeatDraft = (d: QuestDraft): Omit<RepeatDraft, "weekdays"> => ({
     title: d.title,
     category: d.category,
@@ -803,6 +889,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         boss,
       });
       announceAchievements();
+      const appRef = taskRefOf(quest?.notes);
+      if (appRef && apps?.tasks.some((t) => t.provider === appRef.provider && t.id === appRef.id)) {
+        setTaskDone({ ...appRef, state: "ask" });
+      }
       const jiraKey = jiraKeyOf(quest?.notes);
       if (jiraKey && jira?.issues.some((i) => i.key === jiraKey && i.statusCategory !== "done")) {
         setJiraDone({ key: jiraKey, state: "ask" });
@@ -1155,7 +1245,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const sideTabs = [
     { id: "today" as const, label: "Today", count: todayQuests.filter((q) => q.status === "planned" || q.status === "active").length, alert: false },
     { id: "due" as const, label: "Due", count: dueSoon.length, alert: dueSoon.some((p) => p.share < 0.5 && p.deadline.due.getTime() - nowMs < 7 * 86_400_000) },
-    ...(jira ? [{ id: "jira" as const, label: "Jira", count: jira.issues.length, alert: false }] : []),
+    ...(jira || apps
+      ? [{ id: "jira" as const, label: apps ? "Tasks" : "Jira", count: (jira?.issues.length ?? 0) + (apps?.tasks.length ?? 0), alert: false }]
+      : []),
   ];
 
   const earnedToday = todayQuests
@@ -1321,8 +1413,15 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               ) : (
                 <p className="px-1 pt-1 text-xs text-faint">No due dates in the next 3 weeks.</p>
               )
-            ) : sideTab === "jira" && jira ? (
-              <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={applyJiraStatus} onStatusFailed={jiraFailed} onMenu={(issue, x, y) => setMenu({ kind: "jira", issue, x, y })} hideTitle />
+            ) : sideTab === "jira" && (jira || apps) ? (
+              <>
+                {jira && (
+                  <JiraPanel issues={jira.issues} error={jira.error} planned={jiraPlanned} onPlan={planIssue} onStatusChanged={applyJiraStatus} onStatusFailed={jiraFailed} onMenu={(issue, x, y) => setMenu({ kind: "jira", issue, x, y })} hideTitle />
+                )}
+                {apps && (
+                  <TaskList tasks={apps.tasks} errors={apps.errors} planned={tasksPlanned} onPlan={planTask} onDone={completeTask} />
+                )}
+              </>
             ) : (
               <>
               {todayQuests.length === 0 ? (
@@ -1523,15 +1622,24 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               {sideTab === "due" ? (
                 <MobileBossList items={dueSoon} defeated={defeatedBosses} onOpen={openEdit} onPlan={() => setPlanOpen(true)} />
-              ) : sideTab === "jira" && jira ? (
-                <MobileJiraList
-                  issues={jira.issues}
-                  error={jira.error}
-                  planned={jiraPlanned}
-                  onPlan={planIssue}
-                  onStatusChanged={applyJiraStatus}
-                  onStatusFailed={jiraFailed}
-                />
+              ) : sideTab === "jira" && (jira || apps) ? (
+                <div>
+                  {jira && (
+                    <MobileJiraList
+                      issues={jira.issues}
+                      error={jira.error}
+                      planned={jiraPlanned}
+                      onPlan={planIssue}
+                      onStatusChanged={applyJiraStatus}
+                      onStatusFailed={jiraFailed}
+                    />
+                  )}
+                  {apps && (
+                    <div className={jira ? "mt-2 border-t border-line" : ""}>
+                      <TaskList tasks={apps.tasks} errors={apps.errors} planned={tasksPlanned} onPlan={planTask} onDone={completeTask} large />
+                    </div>
+                  )}
+                </div>
               ) : (
                 <MobileQuestList
                   quests={quests.filter((q) => !isDeadline(q))}
@@ -1550,6 +1658,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             onEdit={openEdit}
             onReschedule={reschedule}
             onDropIssue={dropIssue}
+            onDropTask={dropTask}
             onQuestMenu={(quest, x, y) => setMenu({ kind: "quest", quest, x, y })}
             onSlotMenu={(start, x, y) => setMenu({ kind: "slot", start, x, y })}
             layers={layerMap}
@@ -1734,6 +1843,39 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {taskDone && (
+        <div className="fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[60] flex animate-[toast-in_300ms_ease-out] items-center gap-3 rounded-xl border border-line bg-canvas px-4 py-3 shadow-xl sm:inset-x-auto sm:bottom-28 sm:right-6 sm:w-80">
+          <Check size={18} className="shrink-0" style={{ color: TASK_APPS[taskDone.provider].color }} />
+          <span className="min-w-0 flex-1 text-sm">
+            {taskDone.state === "ask" || taskDone.state === "moving" ? (
+              <>Mark it done in {TASK_APPS[taskDone.provider].name} too?</>
+            ) : taskDone.state === "moved" ? (
+              <span className="text-xp">Done in {TASK_APPS[taskDone.provider].name} ✓</span>
+            ) : (
+              <span className="text-danger">{taskDone.state}</span>
+            )}
+          </span>
+          {(taskDone.state === "ask" || taskDone.state === "moving") && (
+            <button
+              onClick={async () => {
+                const t = taskDone;
+                setTaskDone({ ...t, state: "moving" });
+                const err = await completeTask(t);
+                setTaskDone({ ...t, state: err ?? "moved" });
+                if (!err) setTimeout(() => setTaskDone((cur) => (cur?.id === t.id ? null : cur)), 2500);
+              }}
+              disabled={taskDone.state === "moving"}
+              className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {taskDone.state === "moving" ? "Saving…" : "Mark done"}
+            </button>
+          )}
+          <button onClick={() => setTaskDone(null)} aria-label="Dismiss" className="shrink-0 rounded p-1 text-muted hover:bg-surface">
+            <X size={14} />
+          </button>
         </div>
       )}
 

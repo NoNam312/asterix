@@ -26,6 +26,7 @@ import { NotificationSettings, type NotificationPrefs } from "./notification-set
 import { IphoneLock } from "./iphone-lock";
 import { AppearanceSettings } from "./appearance-settings";
 import { JiraSettings } from "./jira-settings";
+import { TaskAppsSettings } from "./task-apps-settings";
 import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/client";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type LockMode } from "@/lib/quests";
@@ -72,7 +73,13 @@ const NAV: { group: string; items: { id: string; label: string; icon: typeof Clo
       { id: "iphone-lock", label: "iPhone lock", icon: Smartphone },
     ],
   },
-  { group: "Integrations", items: [{ id: "jira", label: "Jira", icon: SquareKanban }] },
+  {
+    group: "Integrations",
+    items: [
+      { id: "jira", label: "Jira", icon: SquareKanban },
+      { id: "task-apps", label: "Other task apps", icon: ListChecks },
+    ],
+  },
   { group: "Account", items: [{ id: "account", label: "Account", icon: KeyRound }] },
 ];
 
@@ -371,6 +378,15 @@ export function SettingsForm({
               description="See issues assigned to you, with due dates, in the planner and drag them onto your calendar."
             >
               <JiraSettings />
+            </Card>
+
+            <Card
+              id="task-apps"
+              icon={ListChecks}
+              title="Other task apps"
+              description="Todoist, GitHub, Trello, Linear, Asana or ClickUp: see what's assigned to you in the planner's Tasks tab, plan it on your calendar and tick it off."
+            >
+              <TaskAppsSettings />
             </Card>
           </Group>
 

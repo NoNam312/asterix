@@ -4,6 +4,7 @@ import { assessQuest } from "./difficulty.ts";
 import { CATEGORIES, isDeadline, type Category, type Quest } from "./quests.ts";
 import { subjectOfTitle, type Subject } from "./urgency.ts";
 import { jiraKeyOf } from "./jira-issues.ts";
+import { TASK_APPS, taskRefOf } from "./task-apps.ts";
 
 export type InsightQuest = Pick<
   Quest,
@@ -41,6 +42,8 @@ export function subjectLabel(
 ) {
   // Quests made from Jira issues are grouped together, whatever they're about.
   if (jiraKeyOf(q.notes)) return "Jira";
+  const appTask = taskRefOf(q.notes);
+  if (appTask) return TASK_APPS[appTask.provider].name;
   if (q.category !== "study" && q.category !== "other") return CATEGORIES[q.category].label;
   const subject = subjectOfTitle(q.title, subjects);
   if (subject) return subject;

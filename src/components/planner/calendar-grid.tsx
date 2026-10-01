@@ -16,6 +16,8 @@ import { formatDuration } from "@/lib/dates";
 import { CATEGORIES, dueDay, isDeadline, shortTitle, type CalendarLayer, type Quest } from "@/lib/quests";
 import { RankBadge } from "./rank-badge";
 import { JIRA_DRAG_TYPE, jiraKeyOf, withoutKey, type JiraIssue } from "@/lib/jira-issues";
+import { TASK_DRAG_TYPE, taskRefOf, type ExternalTask } from "@/lib/task-apps";
+import { TaskBadge } from "./task-badge";
 import { JiraKeyBadge } from "./jira-key-badge";
 
 const HOUR_HEIGHT = 72; // px per hour
@@ -37,6 +39,8 @@ type Props = {
   layers: Map<string, CalendarLayer>;
   /** A Jira issue dragged from the sidebar and dropped at a time. */
   onDropIssue?: (issue: JiraIssue, start: Date) => void;
+  /** A task from another app (Todoist, GitHub…) dropped at a time. */
+  onDropTask?: (task: ExternalTask, start: Date) => void;
 };
 
 
@@ -61,6 +65,7 @@ export function CalendarGrid({
   onSlotMenu,
   layers,
   onDropIssue,
+  onDropTask,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
@@ -208,7 +213,9 @@ export function CalendarGrid({
     return clamp(Math.floor((y / HOUR_HEIGHT) * 4) * 15, 0, 23 * 60 + 45);
   }
 
-  const acceptsIssue = (e: React.DragEvent) => !!onDropIssue && e.dataTransfer.types.includes(JIRA_DRAG_TYPE);
+  const acceptsIssue = (e: React.DragEvent) =>
+    (!!onDropIssue && e.dataTransfer.types.includes(JIRA_DRAG_TYPE)) ||
+    (!!onDropTask && e.dataTransfer.types.includes(TASK_DRAG_TYPE));
 
   function handleColumnClick(e: React.MouseEvent<HTMLDivElement>, day: Date) {
     if (e.target !== e.currentTarget) return;
@@ -310,12 +317,19 @@ export function CalendarGrid({
                     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropAt(null);
                   }}
                   onDrop={(e) => {
-                    const raw = e.dataTransfer.getData(JIRA_DRAG_TYPE);
+                    const issue = e.dataTransfer.getData(JIRA_DRAG_TYPE);
+                    const task = e.dataTransfer.getData(TASK_DRAG_TYPE);
                     setDropAt(null);
-                    if (!raw || !onDropIssue) return;
-                    e.preventDefault();
-                    haptic();
-                    onDropIssue(JSON.parse(raw) as JiraIssue, addMinutes(startOfDay(day), dropMinutes(e)));
+                    const start = addMinutes(startOfDay(day), dropMinutes(e));
+                    if (issue && onDropIssue) {
+                      e.preventDefault();
+                      haptic();
+                      onDropIssue(JSON.parse(issue) as JiraIssue, start);
+                    } else if (task && onDropTask) {
+                      e.preventDefault();
+                      haptic();
+                      onDropTask(JSON.parse(task) as ExternalTask, start);
+                    }
                   }}
                   className="relative min-w-0 flex-1 cursor-cell border-l border-line"
                 >
@@ -415,6 +429,9 @@ function QuestBlock({
   const end = addMinutes(start, quest.duration_min);
   const cat = layer ? { color: layer.color, soft: `${layer.color}1f` } : (CATEGORIES[quest.category] ?? CATEGORIES.other);
   const jira = !layer && jiraKeyOf(quest.notes);
+  const appTask = !layer ? taskRefOf(quest.notes) : null;
+  // "#12" or "ENG-42" from the start of the title, if the task had one.
+  const appRefLabel = appTask ? (quest.title.match(/^([A-Z]+-\d+|#\d+):/)?.[1] ?? null) : null;
   const height = Math.max((quest.duration_min / 60) * HOUR_HEIGHT - 2, 18);
   const compact = height < 40;
   const done = quest.status === "completed";
@@ -443,6 +460,7 @@ function QuestBlock({
         <span className="flex min-w-0 items-center gap-1">
           {layer && <CalendarDays size={11} className="shrink-0" style={{ color: layer.color }} />}
           {jira && <JiraKeyBadge issueKey={jira} />}
+          {!jira && appTask && <TaskBadge provider={appTask.provider} label={appRefLabel} />}
           {done && <Check size={12} className="shrink-0 text-xp" />}
           {failed && <X size={12} className="shrink-0 text-danger" />}
           {quest.difficulty && !done && !failed && <RankBadge rank={quest.difficulty as Rank} />}

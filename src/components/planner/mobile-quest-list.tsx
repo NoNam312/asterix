@@ -3,6 +3,8 @@
 import { Check, Play, Repeat, X } from "lucide-react";
 import { jiraKeyOf, withoutKey } from "@/lib/jira-issues";
 import { JiraKeyBadge } from "./jira-key-badge";
+import { TaskBadge } from "./task-badge";
+import { taskRefOf } from "@/lib/task-apps";
 import { formatDuration, formatTime } from "@/lib/dates";
 import type { Rank } from "@/lib/difficulty";
 import { CATEGORIES, type Quest, type QuestStatus } from "@/lib/quests";
@@ -58,6 +60,7 @@ export function MobileQuestList({ quests, onOpen, onStatus, onNew }: Props) {
               <span className="flex items-center gap-1.5">
                 {q.difficulty && <RankBadge rank={q.difficulty as Rank} />}
                 {jiraKeyOf(q.notes) && <JiraKeyBadge issueKey={jiraKeyOf(q.notes)!} />}
+                {!jiraKeyOf(q.notes) && taskRefOf(q.notes) && <TaskBadge provider={taskRefOf(q.notes)!.provider} />}
                 <span className={`truncate font-medium ${done || failed ? "text-muted line-through" : ""}`}>
                   {jiraKeyOf(q.notes) ? withoutKey(q.title, jiraKeyOf(q.notes)!) : q.title}
                 </span>

@@ -5,6 +5,8 @@ import { CalendarDays, Check, ChevronDown, ExternalLink, Flag, Play, Repeat, Rot
 import { RankBadge } from "./rank-badge";
 import { JiraKeyBadge } from "./jira-key-badge";
 import { jiraKeyOf, joinJiraNotes, splitJiraNotes } from "@/lib/jira-issues";
+import { splitTaskNotes, TASK_APPS } from "@/lib/task-apps";
+import { TaskBadge } from "./task-badge";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
@@ -81,7 +83,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   // Kept out of the way until wanted: the full score breakdown, and repeat & notes.
   const [showScore, setShowScore] = useState(false);
   const [showMore, setShowMore] = useState(
-    !!initial.recurrenceId || !!initial.repeat || !!splitJiraNotes(initial.notes ?? "").body,
+    !!initial.recurrenceId ||
+      !!initial.repeat ||
+      !!(splitJiraNotes(initial.notes ?? "").jira ? splitJiraNotes(initial.notes ?? "") : splitTaskNotes(initial.notes ?? "")).body,
   );
   const repeating = !!initial.recurrenceId;
   const repeatChanged =
@@ -114,7 +118,14 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
 
   const finished = initial.status === "completed" || initial.status === "failed";
   // Jira quests: the issue's lines are shown as a Jira row; the notes box holds only the user's text.
-  const notesParts = splitJiraNotes(draft.notes);
+  const jiraParts = splitJiraNotes(draft.notes);
+  const taskParts = jiraParts.jira ? null : splitTaskNotes(draft.notes);
+  // Either kind of linked task: its lines are kept, only the user's own text is editable.
+  const notesParts = {
+    jira: jiraParts.jira ?? (taskParts?.task ? { ...taskParts.task } : null),
+    body: jiraParts.jira ? jiraParts.body : (taskParts?.body ?? draft.notes),
+  };
+  const appTask = taskParts?.task ?? null;
   const jiraKey = notesParts.jira ? jiraKeyOf(draft.notes) : null;
   // Imported calendar events follow their feed, so their details are read-only.
   const imported = !!initial.source;
@@ -185,6 +196,18 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           maxLength={200}
           className="input-large mt-2 block w-full resize-none overflow-hidden border-none bg-transparent text-lg font-semibold leading-snug outline-none placeholder:text-faint"
         />
+
+        {appTask && (
+          <div className="mt-1 flex items-center gap-2 text-sm text-muted">
+            <TaskBadge provider={appTask.provider} />
+            <span className="min-w-0 flex-1 truncate">{appTask.summary}</span>
+            {appTask.url && (
+              <a href={appTask.url} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-accent">
+                Open in {TASK_APPS[appTask.provider].name} <ExternalLink size={13} />
+              </a>
+            )}
+          </div>
+        )}
 
         {jiraKey && notesParts.jira && (
           <div className="mt-1 flex items-center gap-2 text-sm text-muted">
