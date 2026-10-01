@@ -29,6 +29,7 @@ import {
   Square,
   Swords,
   Trash2,
+  Crown,
   SquareKanban,
   ExternalLink,
   X,
@@ -97,6 +98,7 @@ import { DueSoon } from "./due-soon";
 import { JiraPanel } from "./jira-panel";
 import { JiraStatusList } from "./jira-status";
 import { DeadlineModal, splitNotes } from "./deadline-modal";
+import { bossOf } from "@/lib/boss";
 import { jiraKeyOf, questFromIssue, type JiraIssue, type JiraTransition } from "@/lib/jira-issues";
 import { blockTitle } from "@/lib/week-planner";
 import { BadgeIcon } from "@/components/insights/achievement-badge";
@@ -131,12 +133,22 @@ export function Planner({ profile }: { profile: Profile }) {
 }
 
 type Toast =
-  | { xp: number; newLevel?: number; bonus?: number; streak?: number; froze?: boolean }
+  | {
+      xp: number;
+      newLevel?: number;
+      bonus?: number;
+      streak?: number;
+      froze?: boolean;
+      boss?: BossHit;
+    }
   | { failed: string; lost: number };
 
 
 const SUMMARY_SEEN_KEY = "questlog:summary-seen";
 const SIDE_TAB_KEY = "questlog:side-tab";
+
+/** Damage a completed quest did to its due date's boss (and the reward, if that beat it). */
+type BossHit = { name: string; damage: number; left: number; hp: number; reward?: number };
 
 type Menu =
   | { kind: "quest"; quest: Quest; x: number; y: number }
@@ -154,6 +166,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   // Plan week opened from one due date plans just that one.
   const [planFocus, setPlanFocus] = useState<{ key: string; due: Date } | null>(null);
   const [deadlineView, setDeadlineView] = useState<Quest | null>(null);
+  // Bosses already beaten, and whether 017_bosses.sql has been run (rewards need it).
+  const [defeatedBosses, setDefeatedBosses] = useState<Set<string>>(new Set());
+  const [bossesReady, setBossesReady] = useState(false);
   const [layers, setLayers] = useState<CalendarLayer[]>([]);
   const [dueSoon, setDueSoon] = useState<(DeadlineProgress & { quest: Quest })[]>([]);
   const [urgency, setUrgency] = useState<UrgencyContext>(EMPTY_URGENCY);
@@ -224,7 +239,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     const today = startOfDay(new Date());
     const nearFrom = addDays(today, -Math.max(URGENCY_WINDOW_DAYS, 28));
     const nearTo = addDays(today, DUE_SOON_DAYS + URGENCY_WINDOW_DAYS + 15);
-    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze, repeats] = await Promise.all([
+    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze, repeats, defeats] = await Promise.all([
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
@@ -244,7 +259,10 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       // Errors (and so counts as none) until 013_insights_streak_freeze.sql is run.
       supabase.from("streak_freezes").select("day").order("day", { ascending: false }).limit(1).maybeSingle(),
       loadSeries(supabase),
+      supabase.from("boss_defeats").select("deadline_id"),
     ]);
+    setBossesReady(!defeats.error);
+    setDefeatedBosses(new Set(((defeats.data ?? []) as { deadline_id: string }[]).map((d) => d.deadline_id)));
     setSeriesById(new Map(repeats.series.map((r) => [r.id, r])));
     setCanRepeat(repeats.ready);
     const layerList = (calendars.data ?? []) as CalendarLayer[];
@@ -756,6 +774,13 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       }
     }
 
+    // Completing study for a due date damages its boss; finishing it off claims the reward.
+    let boss: BossHit | undefined;
+    if (status === "completed" && quest) {
+      boss = await hitBoss(quest);
+      if (boss?.reward) newTotal += boss.reward;
+    }
+
     const before = levelInfo(profile.total_xp).level;
     const after = levelInfo(newTotal).level;
     const lost = profile.total_xp - newTotal;
@@ -767,6 +792,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
         bonus: bonus?.bonus,
         streak: bonus?.streak,
         froze: bonus?.froze,
+        boss,
       });
       announceAchievements();
       const jiraKey = jiraKeyOf(quest?.notes);
@@ -778,6 +804,43 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     }
     setDraft(null);
     refresh();
+  }
+
+  /** The damage completing `quest` deals to its due date's boss; claims the reward if it's beaten. */
+  async function hitBoss(quest: Quest): Promise<BossHit | undefined> {
+    const all = Object.values(byDay).flat();
+    const worked =
+      quest.status === "active" && quest.started_at
+        ? Math.max(1, Math.round((new Date().getTime() - new Date(quest.started_at).getTime()) / 60_000))
+        : quest.duration_min;
+    const before = deadlineProgress(all, urgency);
+    const after = deadlineProgress(
+      all.map((q) => (q.id === quest.id ? { ...q, status: "completed" as const, worked_min: worked } : q)),
+      urgency,
+    );
+    for (const p of after) {
+      const prev = before.find((b) => b.deadline.id === p.deadline.id);
+      if (!prev || p.doneMinutes <= prev.doneMinutes) continue;
+      const id = p.deadline.id;
+      const wasDefeated = bossOf(prev, defeatedBosses.has(id)).defeated;
+      const now = bossOf(p, false);
+      const hit: BossHit = {
+        name: p.deadline.label,
+        damage: Math.max(0, bossOf(prev, false).left - now.left),
+        left: now.left,
+        hp: now.hp,
+      };
+      if (now.left === 0 && !wasDefeated && bossesReady) {
+        const { data } = await supabase.rpc("claim_boss_reward", { p_deadline: id, p_hp: now.hp });
+        const claim = data as { xp: number; total_xp: number } | null;
+        if (claim) {
+          hit.reward = claim.xp;
+          setDefeatedBosses((cur) => new Set(cur).add(id));
+        }
+      }
+      return wasDefeated ? undefined : hit;
+    }
+    return undefined;
   }
 
   /** After completing a quest: show any achievement it unlocked (one at a time). */
@@ -1232,7 +1295,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
             {sideTab === "due" ? (
               dueSoon.length ? (
-                <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} onMenu={(quest, x, y) => setMenu({ kind: "deadline", quest, x, y })} hideTitle />
+                <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} onMenu={(quest, x, y) => setMenu({ kind: "deadline", quest, x, y })} defeated={defeatedBosses} hideTitle />
               ) : (
                 <p className="px-1 pt-1 text-xs text-faint">No due dates in the next 3 weeks.</p>
               )
@@ -1439,7 +1502,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               {sideTab === "due" ? (
                 <div className="px-4 py-3">
                   {dueSoon.length ? (
-                    <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} onMenu={(quest, x, y) => setMenu({ kind: "deadline", quest, x, y })} hideTitle />
+                    <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} onMenu={(quest, x, y) => setMenu({ kind: "deadline", quest, x, y })} defeated={defeatedBosses} hideTitle />
                   ) : (
                     <p className="py-10 text-center text-sm text-faint">No due dates in the next 3 weeks.</p>
                   )}
@@ -1542,6 +1605,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           deadline={urgency.deadlines.find((d) => d.id === deadlineView.id)}
           progress={deadlineProgress(Object.values(byDay).flat(), urgency).find((p) => p.deadline.id === deadlineView.id)}
           onClose={() => setDeadlineView(null)}
+          defeated={defeatedBosses.has(deadlineView.id)}
           onPlanWeek={() => planDeadline(deadlineView)}
           onAddSession={() => addDeadlineSession(deadlineView)}
         />
@@ -1618,6 +1682,24 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
                   <Flame size={14} /> Daily goal reached! +{toast.bonus} XP · {toast.streak}-day streak
                 </p>
               )}
+              {toast.boss &&
+                (toast.boss.reward ? (
+                  <p className="mt-2 flex items-center gap-1.5 rounded-md bg-xp-soft px-2 py-1 text-sm font-semibold text-xp">
+                    <Crown size={14} /> Boss defeated! {toast.boss.name} · +{toast.boss.reward} XP
+                  </p>
+                ) : (
+                  <div className="mt-2">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-danger">
+                      <Swords size={12} /> −{toast.boss.damage} HP to {toast.boss.name}
+                    </p>
+                    <div className="mt-1 h-1.5 w-56 max-w-full overflow-hidden rounded-full bg-line">
+                      <div className="h-full bg-danger" style={{ width: `${(toast.boss.left / toast.boss.hp) * 100}%` }} />
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      {toast.boss.left} / {toast.boss.hp} HP left
+                    </p>
+                  </div>
+                ))}
               {toast.froze && (
                 <p className="mt-1 flex items-center gap-1 text-xs font-medium text-accent">
                   <Snowflake size={12} /> Streak freeze covered yesterday — streak saved

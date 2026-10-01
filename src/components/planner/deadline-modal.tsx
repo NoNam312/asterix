@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { CalendarDays, CalendarRange, ExternalLink, Flag, Plus, X } from "lucide-react";
+import { CalendarDays, CalendarRange, Crown, ExternalLink, Flag, Plus, Swords, X } from "lucide-react";
+import { bossOf } from "@/lib/boss";
+import { BossBar, hpLabel } from "./boss-bar";
 import { formatDuration, startOfDay } from "@/lib/dates";
 import { dueAt, dueDay, shortTitle, type Quest } from "@/lib/quests";
 import type { Deadline, DeadlineProgress } from "@/lib/urgency";
@@ -33,6 +35,7 @@ export function DeadlineModal({
   onPlanWeek,
   onAddSession,
   onClose,
+  defeated,
 }: {
   quest: Quest;
   /** Calendar layer it came from. */
@@ -44,6 +47,8 @@ export function DeadlineModal({
   onPlanWeek: () => void;
   onAddSession: () => void;
   onClose: () => void;
+  /** Its boss reward has already been claimed. */
+  defeated: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -58,10 +63,9 @@ export function DeadlineModal({
   const days = Math.round((dueDay(quest).getTime() - startOfDay(new Date()).getTime()) / DAY);
   const when = days < 0 ? `${-days} day${days === -1 ? "" : "s"} ago` : days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
   const { url, description } = splitNotes(quest.notes);
-  const covered = progress ? progress.doneMinutes + progress.plannedMinutes : 0;
-  const need = deadline?.needMinutes ?? 0;
-  const share = need ? Math.min(1, covered / need) : 0;
   const upcoming = days >= 0;
+  const boss = progress ? bossOf(progress, defeated) : null;
+  const target = deadline?.subject ?? code ?? "this subject";
 
   return (
     <div
@@ -82,36 +86,58 @@ export function DeadlineModal({
         <h2 className="mt-3 text-xl font-semibold leading-snug">{name}</h2>
         {deadline?.subject && <p className="mt-0.5 text-sm text-muted">{deadline.subject}</p>}
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <div className="rounded-lg bg-surface p-3">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Due</p>
-            <p className="mt-1 text-sm font-semibold">
-              {due.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}
-              {!quest.all_day && `, ${due.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
-            </p>
-            <p className={`text-xs ${upcoming && days <= 3 ? "font-medium text-danger" : "text-muted"}`}>{when}</p>
-          </div>
-          <div className="rounded-lg bg-surface p-3">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Work planned</p>
-            {need ? (
-              <>
-                <p className="mt-1 text-sm font-semibold">
-                  {covered ? hours(covered) : "0h"} <span className="font-normal text-muted">of ~{hours(need)}</span>
-                </p>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line">
-                  <div
-                    className={`h-full rounded-full ${share >= 1 ? "bg-xp" : days <= 7 && share < 0.5 ? "bg-danger" : "bg-accent"}`}
-                    style={{ width: `${Math.max(3, share * 100)}%` }}
-                  />
-                </div>
-                {progress && progress.doneMinutes > 0 && (
-                  <p className="mt-1 text-[11px] text-muted">{hours(progress.doneMinutes)} done already</p>
-                )}
-              </>
+        {boss && (
+          <div
+            className={`mt-4 rounded-xl border p-4 ${
+              boss.defeated ? "border-xp/40 bg-xp-soft" : "border-danger/30 bg-danger-soft/50"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {boss.defeated ? <Crown size={16} className="text-xp" /> : <Swords size={16} className="text-danger" />}
+              <span className={`text-xs font-semibold uppercase tracking-wide ${boss.defeated ? "text-xp" : "text-danger"}`}>
+                {boss.defeated ? "Boss defeated" : "Boss"}
+              </span>
+              <span className="ml-auto text-sm font-semibold tabular-nums">{hpLabel(boss)}</span>
+            </div>
+            <div className="mt-2">
+              <BossBar boss={boss} size="lg" />
+            </div>
+            {boss.defeated ? (
+              <p className="mt-2 text-sm">
+                You beat it before the due date. <strong className="text-xp">+{boss.reward} XP</strong> earned.
+              </p>
             ) : (
-              <p className="mt-1 text-sm text-muted">—</p>
+              <>
+                <p className="mt-2 text-sm text-ink">
+                  Every minute you study {target} deals 1 damage. Beat it before it&apos;s due for{" "}
+                  <strong className="text-xp">+{boss.reward} XP</strong>.
+                </p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { label: "Damage dealt", value: boss.damage },
+                    { label: "Planned", value: boss.left - boss.leftAfterPlan },
+                    { label: "Uncovered", value: boss.leftAfterPlan, warn: boss.leftAfterPlan > 0 && days <= 7 },
+                  ].map((stat) => (
+                    <div key={stat.label} className="rounded-lg bg-canvas/70 px-2 py-1.5">
+                      <p className={`text-sm font-semibold tabular-nums ${stat.warn ? "text-danger" : ""}`}>
+                        {stat.value ? hours(stat.value) : "0h"}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wide text-muted">{stat.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
+        )}
+
+        <div className="mt-3 rounded-lg bg-surface p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Due</p>
+          <p className="mt-1 text-sm font-semibold">
+            {due.toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" })}
+            {!quest.all_day && `, ${due.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+            <span className={`ml-2 text-xs font-normal ${upcoming && days <= 3 ? "font-medium text-danger" : "text-muted"}`}>{when}</span>
+          </p>
         </div>
 
         {description ? (
@@ -136,7 +162,7 @@ export function DeadlineModal({
           )}
         </p>
 
-        {upcoming && (
+        {upcoming && !boss?.defeated && (
           <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
             <button
               onClick={onPlanWeek}

@@ -1,6 +1,8 @@
 "use client";
 
-import { CalendarRange, Check, Flag } from "lucide-react";
+import { CalendarRange, Crown, Swords } from "lucide-react";
+import { bossOf } from "@/lib/boss";
+import { BossBar } from "./boss-bar";
 import { formatDuration, startOfDay } from "@/lib/dates";
 import { dueDay, isDeadline, type CalendarLayer, type Quest } from "@/lib/quests";
 import type { DeadlineProgress } from "@/lib/urgency";
@@ -30,8 +32,8 @@ function dueLabel(days: number) {
 }
 
 /**
- * Upcoming due dates and exams, each with how much work is done or planned for it compared with
- * roughly what it needs ("Assignment 2 · in 3 days · only 1h of ~6h planned").
+ * Upcoming due dates and exams as bosses: HP is the work each needs, study on its subject deals
+ * damage, and planned quests show as damage on the way ("Assignment 2 · 240 HP · only 1h planned").
  */
 export function DueSoon({
   items,
@@ -40,6 +42,7 @@ export function DueSoon({
   onPlan,
   hideTitle,
   onMenu,
+  defeated,
 }: {
   items: Item[];
   layers: Map<string, CalendarLayer>;
@@ -49,16 +52,18 @@ export function DueSoon({
   hideTitle?: boolean;
   /** Right-click on a due date. */
   onMenu?: (quest: Quest, x: number, y: number) => void;
+  /** Bosses already beaten (their reward was claimed). */
+  defeated: Set<string>;
 }) {
   if (!items.length) return null;
-  const behind = items.some((p) => p.share < 1 && daysUntil(p.quest) <= 7);
+  const behind = items.some((p) => p.share < 1 && daysUntil(p.quest) <= 7 && !defeated.has(p.deadline.id));
 
   return (
     <div>
       <div className="flex items-center justify-between px-1">
         <h3
           className={`text-[11px] font-medium uppercase tracking-wide text-muted ${hideTitle ? "invisible" : ""}`}
-          title="Work on a subject earns up to +50% XP as its due date gets close."
+          title="Each due date is a boss: study its subject to deal damage (1 HP per minute) and beat it before it's due for bonus XP."
         >
           Due soon
         </h3>
@@ -77,14 +82,16 @@ export function DueSoon({
           const { deadline, quest } = p;
           const days = daysUntil(quest);
           const covered = p.doneMinutes + p.plannedMinutes;
-          const urgent = days <= 7 && p.share < 0.5;
+          const boss = bossOf(p, defeated.has(deadline.id));
+          const urgent = !boss.defeated && days <= 7 && p.share < 0.5;
           const color = layers.get(quest.calendar_id ?? "")?.color ?? "var(--color-muted)";
-          const status =
-            p.share >= 1
-              ? `${hours(covered)} planned`
+          const status = boss.defeated
+            ? `Defeated · +${boss.reward} XP`
+            : p.share >= 1
+              ? `${boss.left} HP left · enough planned to win`
               : covered === 0
-                ? `nothing planned · needs ~${hours(deadline.needMinutes)}`
-                : `${urgent ? "only " : ""}${hours(covered)} of ~${hours(deadline.needMinutes)} planned`;
+                ? `${boss.left} HP · nothing planned · needs ~${hours(deadline.needMinutes)}`
+                : `${boss.left} HP · ${urgent ? "only " : ""}${hours(covered)} of ~${hours(deadline.needMinutes)} planned`;
           const due = deadline.due.toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
           return (
             <li
@@ -103,20 +110,23 @@ ${status}`}
                 className="w-full rounded-md px-1 py-1 text-left text-xs hover:bg-surface-hover"
               >
                 <span className="flex items-center gap-2">
-                  <Flag size={11} className="shrink-0" style={{ color }} />
-                  <span className="min-w-0 flex-1 truncate">{deadline.label}</span>
+                  {boss.defeated ? (
+                    <Crown size={11} className="shrink-0 text-xp" />
+                  ) : (
+                    <Swords size={11} className="shrink-0" style={{ color }} />
+                  )}
+                  <span className={`min-w-0 flex-1 truncate ${boss.defeated ? "text-muted line-through" : ""}`}>
+                    {deadline.label}
+                  </span>
                   <span className={`shrink-0 text-[11px] tabular-nums ${days <= 2 ? "font-medium text-danger" : "text-faint"}`}>
                     {shortDue(days)}
                   </span>
                 </span>
                 <span className="mt-1 ml-[19px] flex items-center gap-1.5">
-                  <span className="block h-1 flex-1 overflow-hidden rounded-full bg-line">
-                    <span
-                      className={`block h-full rounded-full ${p.share >= 1 ? "bg-xp" : urgent ? "bg-danger" : "bg-accent"}`}
-                      style={{ width: `${Math.max(3, p.share * 100)}%` }}
-                    />
+                  <BossBar boss={boss} />
+                  <span className={`shrink-0 text-[10px] tabular-nums ${boss.defeated ? "text-xp" : "text-faint"}`}>
+                    {boss.defeated ? `+${boss.reward} XP` : `${boss.left} HP`}
                   </span>
-                  {p.share >= 1 && <Check size={10} className="shrink-0 text-xp" />}
                 </span>
                 {/* Only spell it out when it needs attention. */}
                 {urgent && <span className="mt-0.5 block truncate pl-[19px] text-[11px] text-danger">{status}</span>}

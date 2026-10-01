@@ -7,6 +7,8 @@ export type History = {
   quests: InsightQuest[];
   bonuses: { day: string; streak: number; xp: number }[];
   freezes: { day: string }[];
+  /** Bosses beaten (supabase/017_bosses.sql). */
+  bosses: { defeated_at: string }[];
   subjects: Map<string, Subject>;
   /** False until supabase/013_insights_streak_freeze.sql has been run. */
   tracksTime: boolean;
@@ -31,11 +33,12 @@ async function allQuests(supabase: SupabaseClient, until: Date) {
 }
 
 export async function loadHistory(supabase: SupabaseClient, until: Date): Promise<History> {
-  const [quests, bonuses, freezes, series] = await Promise.all([
+  const [quests, bonuses, freezes, series, bosses] = await Promise.all([
     allQuests(supabase, until),
     supabase.from("daily_bonuses").select("day, streak, xp").order("day"),
     supabase.from("streak_freezes").select("day").order("day"),
     supabase.from("calendar_series").select("title"),
+    supabase.from("boss_defeats").select("defeated_at"),
   ]);
   const titles = [
     ...((series.data ?? []) as { title: string }[]).map((r) => r.title),
@@ -45,6 +48,7 @@ export async function loadHistory(supabase: SupabaseClient, until: Date): Promis
     quests: quests.filter((q) => q.kind !== "deadline"),
     bonuses: (bonuses.data ?? []) as History["bonuses"],
     freezes: freezes.error ? [] : ((freezes.data ?? []) as History["freezes"]),
+    bosses: bosses.error ? [] : ((bosses.data ?? []) as History["bosses"]),
     subjects: buildSubjectIndex(titles),
     tracksTime: !freezes.error,
   };

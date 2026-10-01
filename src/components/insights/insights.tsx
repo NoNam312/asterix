@@ -66,6 +66,7 @@ function InsightsView({ totalXp, goal }: { totalXp: number; goal: number }) {
         quests: history.quests,
         bonuses: history.bonuses,
         freezes: history.freezes,
+        bosses: history.bosses,
         totalXp,
         subjects: history.subjects,
       }),

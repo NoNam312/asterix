@@ -24,6 +24,8 @@ export type AchievementInput = {
   quests: InsightQuest[];
   bonuses: { day: string; streak: number; xp: number }[];
   freezes: { day: string }[];
+  /** Bosses beaten; optional so older callers keep working. */
+  bosses?: { defeated_at: string }[];
   totalXp: number;
   subjects: Map<string, Subject>;
 };
@@ -135,6 +137,9 @@ export function computeAchievements(input: AchievementInput): Achievement[] {
     return { value: first ? 1 : 0, at: first ? parseDay(first.day) : null };
   };
 
+  const bossKills = (target: number) =>
+    reachedAt((input.bosses ?? []).map((b) => ({ at: new Date(b.defeated_at), amount: 1 })), target);
+
   const startsAt = (q: InsightQuest) => new Date(q.start_at);
   const defs: Def[] = [
     { id: "first-quest", group: "quests", tier: "E", title: "First steps", description: "Complete your first quest", target: 1, measure: count(done) },
@@ -165,6 +170,9 @@ export function computeAchievements(input: AchievementInput): Achievement[] {
     { id: "level-5", group: "level", tier: "C", title: "Level 5", description: "Reach level 5", target: 5, measure: level },
     { id: "level-10", group: "level", tier: "A", title: "Level 10", description: "Reach level 10", target: 10, measure: level },
     { id: "level-20", group: "level", tier: "S", title: "Level 20", description: "Reach level 20", target: 20, measure: level },
+
+    { id: "boss-1", group: "special", tier: "B", title: "Giant slayer", description: "Beat a boss before its due date", target: 1, measure: bossKills },
+    { id: "boss-5", group: "special", tier: "A", title: "Boss hunter", description: "Beat 5 bosses", target: 5, measure: bossKills },
 
     { id: "early-bird", group: "special", tier: "C", title: "Early bird", description: "Complete a quest that starts before 7 am", target: 1, measure: firstWhere((q) => startsAt(q).getHours() < 7) },
     { id: "night-owl", group: "special", tier: "D", title: "Night owl", description: "Complete a quest that starts at 10 pm or later", target: 1, measure: firstWhere((q) => startsAt(q).getHours() >= 22) },

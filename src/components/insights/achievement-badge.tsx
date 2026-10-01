@@ -6,6 +6,7 @@ import {
   Flame,
   Gem,
   Moon,
+  Skull,
   Snowflake,
   Sparkles,
   Star,
@@ -36,6 +37,8 @@ const ICONS: Record<string, LucideIcon> = {
   flawless: Gem,
   weekend: CalendarCheck,
   freeze: Snowflake,
+  "boss-1": Swords,
+  "boss-5": Skull,
 };
 
 /** Round badge in the achievement's tier colour (grey while locked). */

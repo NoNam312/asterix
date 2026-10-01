@@ -21,7 +21,7 @@ const TIERS: { days: number; bonus: number }[] = [
   { days: URGENCY_WINDOW_DAYS, bonus: 0.05 },
 ];
 
-type QuestLike = Pick<Quest, "id" | "title" | "notes" | "start_at" | "duration_min" | "status" | "category" | "calendar_id" | "kind" | "all_day">;
+type QuestLike = Pick<Quest, "id" | "title" | "notes" | "start_at" | "duration_min" | "status" | "category" | "calendar_id" | "kind" | "all_day"> & Partial<Pick<Quest, "worked_min">>;
 
 export type Deadline = {
   id: string;
@@ -279,7 +279,8 @@ export function deadlineProgress(quests: QuestLike[], ctx: UrgencyContext, now =
     const target = candidates(q, new Date(q.start_at), ctx).find((d) => byId.has(d.id));
     if (!target) continue;
     const p = byId.get(target.id)!;
-    if (q.status === "completed") p.doneMinutes += q.duration_min;
+    // Timed quests count the minutes actually worked.
+    if (q.status === "completed") p.doneMinutes += q.worked_min ?? q.duration_min;
     else p.plannedMinutes += q.duration_min;
   }
   for (const p of byId.values()) {
