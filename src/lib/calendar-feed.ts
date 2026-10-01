@@ -112,7 +112,7 @@ function plainText(value: string) {
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n\s*\n+/g, "\n\n")
     .trim()
-    .slice(0, 1500);
+    .slice(0, 4000);
 }
 
 /** Only http(s) links, so a feed can't smuggle in javascript: URLs. */

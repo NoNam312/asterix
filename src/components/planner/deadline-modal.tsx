@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, CalendarRange, Crown, ExternalLink, Flag, Plus, Swords, X } from "lucide-react";
 import { bossOf } from "@/lib/boss";
 import { BossBar, hpLabel } from "./boss-bar";
@@ -36,6 +36,8 @@ export function DeadlineModal({
   onAddSession,
   onClose,
   defeated,
+  canEstimate,
+  onSetEstimate,
 }: {
   quest: Quest;
   /** Calendar layer it came from. */
@@ -49,6 +51,10 @@ export function DeadlineModal({
   onClose: () => void;
   /** Its boss reward has already been claimed. */
   defeated: boolean;
+  /** False until 018_deadline_estimates.sql has been run. */
+  canEstimate: boolean;
+  /** Your own estimate in minutes, or null to go back to the automatic guess. */
+  onSetEstimate: (minutes: number | null) => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -131,6 +137,10 @@ export function DeadlineModal({
           </div>
         )}
 
+        {deadline && upcoming && !boss?.defeated && (
+          <EstimateRow deadline={deadline} canEstimate={canEstimate} onSet={onSetEstimate} />
+        )}
+
         <div className="mt-3 rounded-lg bg-surface p-3">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Due</p>
           <p className="mt-1 text-sm font-semibold">
@@ -198,5 +208,98 @@ function Linkified({ text }: { text: string }) {
         ),
       )}
     </>
+  );
+}
+
+const QUICK_HOURS = [1, 2, 4, 6, 10, 15, 20];
+
+/** How much work it needs (sets the boss's HP), why QuestLog thinks so, and a way to change it. */
+function EstimateRow({
+  deadline,
+  canEstimate,
+  onSet,
+}: {
+  deadline: Deadline;
+  canEstimate: boolean;
+  onSet: (minutes: number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [custom, setCustom] = useState("");
+  const own = deadline.needBasis === "Set by you";
+  const pick = (minutes: number | null) => {
+    onSet(minutes);
+    setEditing(false);
+    setCustom("");
+  };
+  return (
+    <div className="mt-3 rounded-lg bg-surface p-3">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Estimated work</p>
+          <p className="mt-1 text-sm font-semibold">
+            ~{hours(deadline.needMinutes)}
+            <span className="ml-2 text-xs font-normal text-muted">
+              {own ? `set by you · QuestLog guessed ~${hours(deadline.guessedMinutes)}` : `from: ${deadline.needBasis}`}
+            </span>
+          </p>
+        </div>
+        {canEstimate && (
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-canvas"
+          >
+            {editing ? "Done" : "Change"}
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div className="mt-2">
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_HOURS.map((h) => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => pick(h * 60)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  deadline.needMinutes === h * 60 ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:bg-canvas"
+                }`}
+              >
+                {h}h
+              </button>
+            ))}
+          </div>
+          <form
+            className="mt-2 flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const h = Number(custom);
+              if (h >= 0.25 && h <= 30) pick(Math.round(h * 60));
+            }}
+          >
+            <input
+              type="number"
+              min={0.25}
+              max={30}
+              step={0.5}
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              placeholder="Other"
+              className="w-20 rounded-md border border-line bg-canvas px-2 py-1 text-sm outline-none focus:border-accent"
+            />
+            <span className="text-xs text-muted">hours</span>
+            <button type="submit" className="rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-canvas">
+              Set
+            </button>
+            {own && (
+              <button type="button" onClick={() => pick(null)} className="ml-auto text-xs text-muted hover:text-ink">
+                Use QuestLog&apos;s guess
+              </button>
+            )}
+          </form>
+          <p className="mt-1.5 text-[11px] text-faint">This sets the boss&apos;s HP, its XP reward and how much Plan week schedules.</p>
+        </div>
+      )}
+    </div>
   );
 }

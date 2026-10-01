@@ -30,8 +30,12 @@ export type Deadline = {
   label: string;
   due: Date;
   kind: TargetKind;
-  /** Rough study time it needs, in minutes. */
+  /** Study time it needs, in minutes: your own estimate if you set one, else the guess. */
   needMinutes: number;
+  /** Why: "Worth 50% of the grade", "15-minute presentation", "Set by you". */
+  needBasis: string;
+  /** The guess from the title and details (shown when you change the estimate). */
+  guessedMinutes: number;
   codes: Set<string>;
   /** Subject name, when known ("Models of Computation"). */
   subject: string | null;
@@ -139,32 +143,99 @@ function findCodes(text: string, subjects: Map<string, Subject>): Set<string> {
 // ---------------------------------------------------------------------------------------------
 // Deadlines
 
-/** How much work a deadline needs. A weighting like "(50%)" in the title scales it. */
-export function estimateNeed(title: string): { kind: TargetKind; minutes: number } {
-  const t = title.toLowerCase();
-  if (/\b(team member evaluation|peer (review|evaluation|assessment)|give feedback|feedback as group|reflection|survey|attendance|check-?in)\b/.test(t)) {
-    return { kind: "other", minutes: 60 };
-  }
+export type Estimate = { kind: TargetKind; minutes: number; basis: string };
+
+const round30 = (min: number) => Math.max(60, Math.round(min / 30) * 30);
+const SMALL_TASK =
+  /\b(team member evaluation|peer (review|evaluation|assessment)|give feedback|feedback as group|reflection|survey|attendance|check-?in)\b/i;
+
+/** A grade weighting: anywhere in the title, or in the details next to words like "worth" or "mark". */
+function weightOf(title: string, details: string) {
+  const inTitle = title.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+  if (inTitle) return Number(inTitle[1]);
+  const inDetails =
+    details.match(/\b(?:worth|weight(?:ed|ing)?|contributes?|counts? for)\D{0,20}?(\d{1,3}(?:\.\d+)?)\s*%/i) ??
+    details.match(/(\d{1,3}(?:\.\d+)?)\s*%\s*(?:of\s+(?:your|the)\s+)?(?:final\s+|overall\s+|subject\s+|total\s+)?(?:mark|grade|assessment)/i);
+  return inDetails ? Number(inDetails[1]) : null;
+}
+
+/** "2,000 words", "1500-2000 words", "2000 word essay": the largest number given. */
+function wordsOf(text: string) {
+  const m = text.match(/(\d{1,2},\d{3}|\d{3,5})(?:\s*(?:-|–|to)\s*(\d{1,2},\d{3}|\d{3,5}))?\s*-?\s*words?\b/i);
+  if (!m) return null;
+  return Math.max(...[m[1], m[2]].filter(Boolean).map((n) => Number(n!.replace(",", ""))));
+}
+
+/** "15 minute presentation", "presentation length is 15 minutes", "5-min video". */
+function talkLength(text: string) {
+  const m =
+    text.match(/(\d{1,3})\s*-?\s*(?:min(?:ute)?s?)\s+(?:long\s+)?(presentation|talk|pitch|video|demo)/i) ??
+    text.match(/(presentation|talk|pitch|video|demo)[^.\n]{0,40}?(\d{1,3})\s*-?\s*min(?:ute)?s?/i);
+  if (!m) return null;
+  const minutes = Number(/^\d/.test(m[1]) ? m[1] : m[2]);
+  const what = (/^\d/.test(m[1]) ? m[2] : m[1]).toLowerCase();
+  return minutes > 0 && minutes <= 120 ? { minutes, what } : null;
+}
+
+/**
+ * How much work a due date needs, from its title and (for calendar due dates) its details, e.g.
+ * Canvas's assignment description. Says which clue it used, so the guess can be explained.
+ */
+export function estimateNeed(title: string, details?: string | null): Estimate {
+  const text = (details ?? "").replace(/🔗 \S+/g, "");
+  const both = `${title}\n${text}`;
+  if (SMALL_TASK.test(title)) return { kind: "other", minutes: 60, basis: "Short task (reflection or evaluation)" };
+
   const guess = classifyTarget(title);
-  const weight = title.match(/(\d{1,3})\s*%/);
-  if (weight && guess.kind !== "quiz") {
-    const pct = Math.min(100, Number(weight[1]));
-    return { ...guess, minutes: Math.max(60, Math.round((pct * 18) / 30) * 30) }; // ~18 min per 1%
+  if (guess.kind === "quiz") return { ...guess, basis: "Quiz" };
+
+  // Every clue found gives an estimate; the biggest wins (they rarely disagree by much).
+  const options: { minutes: number; basis: string }[] = [];
+  const weight = weightOf(title, text);
+  if (weight) options.push({ minutes: round30(Math.min(100, weight) * 18), basis: `Worth ${weight}% of the grade` });
+  const words = wordsOf(both);
+  if (words && words >= 300) {
+    options.push({ minutes: round30((words / 400) * 60 + 120), basis: `About ${words.toLocaleString("en-AU")} words` });
   }
-  return guess;
+  const talk = talkLength(both);
+  if (talk) options.push({ minutes: round30(180 + talk.minutes * 10), basis: `${talk.minutes}-minute ${talk.what}` });
+  if (/\bmilestone\b/i.test(title)) {
+    const final = /\b(final|finished|complete|report)\b/i.test(title);
+    options.push(final ? { minutes: 15 * 60, basis: "Final milestone" } : { minutes: 5 * 60, basis: "Milestone" });
+  }
+  if (options.length) {
+    const best = options.reduce((a, b) => (b.minutes > a.minutes ? b : a));
+    return { kind: guess.kind === "other" ? "assignment" : guess.kind, ...best };
+  }
+
+  if (guess.kind === "exam") {
+    if (/\b(final|end of semester)\b/i.test(title)) return { kind: "exam", minutes: 12 * 60, basis: "Final exam" };
+    if (/\b(mid-?sem|midterm|mid-semester)\b/i.test(title)) return { kind: "exam", minutes: 4 * 60, basis: "Mid-semester test" };
+    return { ...guess, basis: "Exam" };
+  }
+  if (guess.kind === "assignment") {
+    return { ...guess, basis: text.trim() ? "Assignment (no size given)" : "Assignment (no details from Canvas)" };
+  }
+  return { ...guess, basis: "No details to go on" };
 }
 
 /**
  * Builds the deadline list from loaded quests: calendar due dates, plus exams on the calendar
  * (imported or your own). `subjectTitles` are extra class titles, e.g. from skipped series.
  */
-export function buildUrgencyContext(quests: QuestLike[], subjectTitles: string[] = []): UrgencyContext {
+export function buildUrgencyContext(
+  quests: QuestLike[],
+  subjectTitles: string[] = [],
+  /** Estimates you've set yourself, by due date id (supabase/018_deadline_estimates.sql). */
+  overrides: Map<string, number> = new Map(),
+): UrgencyContext {
   const subjects = buildSubjectIndex([...subjectTitles, ...quests.filter((q) => q.calendar_id).map((q) => q.title)]);
 
   const deadlines: Deadline[] = [];
   for (const q of quests) {
-    const guess = estimateNeed(q.title);
+    const guess = estimateNeed(q.title, isDeadline(q) ? q.notes : null);
     const exam = !isDeadline(q) && guess.kind === "exam" && q.status === "planned";
+    const own = overrides.get(q.id);
     if (!isDeadline(q) && !exam) continue;
     const codes = codesIn(q.title, subjects);
     const code = [...codes][0];
@@ -174,7 +245,9 @@ export function buildUrgencyContext(quests: QuestLike[], subjectTitles: string[]
       label: shortTitle(q.title),
       due: exam ? new Date(q.start_at) : dueAt(q),
       kind: guess.kind,
-      needMinutes: guess.minutes,
+      needMinutes: own ?? guess.minutes,
+      needBasis: own ? "Set by you" : guess.basis,
+      guessedMinutes: guess.minutes,
       codes,
       subject: code ? (subjects.get(code)?.name ?? null) : null,
       nameTokens: codes.size ? [] : tokens(q.title.replace(/\b(due|deadline|submission|submit)\b/gi, "")),

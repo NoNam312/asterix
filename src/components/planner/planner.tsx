@@ -170,6 +170,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   // Bosses already beaten, and whether 017_bosses.sql has been run (rewards need it).
   const [defeatedBosses, setDefeatedBosses] = useState<Set<string>>(new Set());
   const [bossesReady, setBossesReady] = useState(false);
+  // False until 018_deadline_estimates.sql has been run (then you can set a due date's estimate).
+  const [estimatesReady, setEstimatesReady] = useState(false);
   const [layers, setLayers] = useState<CalendarLayer[]>([]);
   const [dueSoon, setDueSoon] = useState<(DeadlineProgress & { quest: Quest })[]>([]);
   const [urgency, setUrgency] = useState<UrgencyContext>(EMPTY_URGENCY);
@@ -240,7 +242,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     const today = startOfDay(new Date());
     const nearFrom = addDays(today, -Math.max(URGENCY_WINDOW_DAYS, 28));
     const nearTo = addDays(today, DUE_SOON_DAYS + URGENCY_WINDOW_DAYS + 15);
-    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze, repeats, defeats] = await Promise.all([
+    const [active, latestBonus, bestBonus, calendars, near, series, lastFreeze, repeats, defeats, estimates] = await Promise.all([
       supabase.from("quests").select("*").eq("status", "active").limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("day, streak").order("day", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("daily_bonuses").select("streak").order("streak", { ascending: false }).limit(1).maybeSingle(),
@@ -261,7 +263,12 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
       supabase.from("streak_freezes").select("day").order("day", { ascending: false }).limit(1).maybeSingle(),
       loadSeries(supabase),
       supabase.from("boss_defeats").select("deadline_id"),
+      supabase.from("deadline_estimates").select("deadline_id, minutes"),
     ]);
+    setEstimatesReady(!estimates.error);
+    const overrides = new Map(
+      ((estimates.data ?? []) as { deadline_id: string; minutes: number }[]).map((e) => [e.deadline_id, e.minutes]),
+    );
     setBossesReady(!defeats.error);
     setDefeatedBosses(new Set(((defeats.data ?? []) as { deadline_id: string }[]).map((d) => d.deadline_id)));
     setSeriesById(new Map(repeats.series.map((r) => [r.id, r])));
@@ -275,7 +282,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // These weeks are now cached too, so paging near today is instant.
     if (!near.error && nearRows.length < 5000) cache.store(nearFrom, nearTo, nearRows);
     const nearby = visible(nearRows);
-    const ctx = buildUrgencyContext(nearby, ((series.data ?? []) as { title: string }[]).map((r) => r.title));
+    const ctx = buildUrgencyContext(nearby, ((series.data ?? []) as { title: string }[]).map((r) => r.title), overrides);
     setUrgency(ctx);
     const nearbyById = new Map(nearby.map((q) => [q.id, q]));
     const soon = addDays(today, DUE_SOON_DAYS).getTime();
@@ -1038,6 +1045,20 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     };
   }
 
+  /** Your own estimate for a due date's work (null = back to the automatic guess). */
+  async function setEstimate(q: Quest, minutes: number | null) {
+    const previous = urgency.deadlines.find((d) => d.id === q.id);
+    const hadOwn = previous?.needBasis === "Set by you" ? previous.needMinutes : null;
+    const save = (m: number | null) =>
+      m === null
+        ? supabase.from("deadline_estimates").delete().eq("deadline_id", q.id)
+        : supabase.from("deadline_estimates").upsert({ deadline_id: q.id, minutes: m, updated_at: new Date().toISOString() });
+    const { error } = await save(minutes);
+    if (error) return setError(error.message);
+    pushUndo(`Changed the estimate for “${shortTitle(q.title)}”`, () => save(hadOwn));
+    refreshMeta();
+  }
+
   /** Plan week with just this due date ticked. */
   function planDeadline(q: Quest) {
     setPlanFocus({ key: q.id, due: dueAt(q) });
@@ -1605,6 +1626,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           progress={deadlineProgress(Object.values(byDay).flat(), urgency).find((p) => p.deadline.id === deadlineView.id)}
           onClose={() => setDeadlineView(null)}
           defeated={defeatedBosses.has(deadlineView.id)}
+          canEstimate={estimatesReady}
+          onSetEstimate={(minutes) => setEstimate(deadlineView, minutes)}
           onPlanWeek={() => planDeadline(deadlineView)}
           onAddSession={() => addDeadlineSession(deadlineView)}
         />

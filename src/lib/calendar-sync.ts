@@ -24,7 +24,7 @@ function eventNotes(e: FeedEvent) {
     e.isDeadline && e.description,
     e.isDeadline && e.url && `🔗 ${e.url}`,
   ].filter(Boolean);
-  return parts.length ? parts.join("\n\n").slice(0, 2000) : null;
+  return parts.length ? parts.join("\n\n").slice(0, 4500) : null;
 }
 
 function toQuestRow(e: FeedEvent, calendarId: string) {

@@ -91,7 +91,9 @@ export function PlanWeekDialog({
         for (const q of all) {
           const due = isDeadline(q) ? dueAt(q) : new Date(q.start_at);
           if (due <= now) continue;
-          const guess = estimateNeed(q.title);
+          // The same estimate the boss uses (yours if you set one), else a guess from the title.
+          const known = urgency.deadlines.find((d) => d.id === q.id);
+          const guess = known ? { kind: known.kind, minutes: known.needMinutes } : estimateNeed(q.title, q.notes);
           // Due dates from calendars, plus exams you've put on your calendar yourself.
           if (!isDeadline(q) && !(guess.kind === "exam" && q.status === "planned")) continue;
           const already = planned.get(q.id) ?? 0;
