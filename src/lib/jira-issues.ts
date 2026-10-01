@@ -34,6 +34,30 @@ export function withoutKey(title: string, key: string) {
   return title.startsWith(`${key}: `) ? title.slice(key.length + 2) : title;
 }
 
+const isJiraLine = (line: string) =>
+  /^Jira .+ in .+/.test(line) || /^https:\/\/[a-z0-9-]+\.atlassian\.net\/browse\//.test(line) || /^jira:[A-Z]/.test(line);
+
+/**
+ * A Jira quest's notes split into the lines QuestLog added (issue type, link, "jira:KEY") and the
+ * user's own notes, so the quest window can show a tidy Jira row and only the user's text.
+ */
+export function splitJiraNotes(notes: string) {
+  const lines = notes.split("\n");
+  const jira = lines.filter(isJiraLine);
+  if (!jira.some((l) => l.startsWith("jira:"))) return { jira: null, body: notes };
+  return {
+    jira: {
+      lines: jira,
+      summary: jira.find((l) => l.startsWith("Jira ")) ?? "Jira issue",
+      url: jira.find((l) => l.startsWith("https://")) ?? null,
+    },
+    body: lines.filter((l) => !isJiraLine(l)).join("\n").trim(),
+  };
+}
+
+/** Puts the Jira lines back after the user's notes. */
+export const joinJiraNotes = (body: string, jiraLines: string[]) => [body.trim(), jiraLines.join("\n")].filter(Boolean).join("\n\n");
+
 export function jiraKeyOf(notes: string | null | undefined) {
   return notes?.match(/\bjira:([A-Z][A-Z0-9_]+-\d+)\b/)?.[1] ?? null;
 }

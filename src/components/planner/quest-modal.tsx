@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CalendarDays, Check, ChevronDown, Flag, Play, Repeat, RotateCcw, Trash2, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ExternalLink, Flag, Play, Repeat, RotateCcw, Trash2, X } from "lucide-react";
 import { RankBadge } from "./rank-badge";
+import { JiraKeyBadge } from "./jira-key-badge";
+import { jiraKeyOf, joinJiraNotes, splitJiraNotes } from "@/lib/jira-issues";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
@@ -75,7 +77,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   const [pickedScope, setScope] = useState<Scope>("this");
   // Kept out of the way until wanted: the full score breakdown, and repeat & notes.
   const [showScore, setShowScore] = useState(false);
-  const [showMore, setShowMore] = useState(!!initial.recurrenceId || !!initial.repeat || !!initial.notes);
+  const [showMore, setShowMore] = useState(
+    !!initial.recurrenceId || !!initial.repeat || !!splitJiraNotes(initial.notes ?? "").body,
+  );
   const repeating = !!initial.recurrenceId;
   const repeatChanged =
     (initial.repeat ?? []).length !== (draft.repeat ?? []).length ||
@@ -106,6 +110,9 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   }
 
   const finished = initial.status === "completed" || initial.status === "failed";
+  // Jira quests: the issue's lines are shown as a Jira row; the notes box holds only the user's text.
+  const notesParts = splitJiraNotes(draft.notes);
+  const jiraKey = notesParts.jira ? jiraKeyOf(draft.notes) : null;
   // Imported calendar events follow their feed, so their details are read-only.
   const imported = !!initial.source;
   const assessment = scoreQuest(
@@ -175,6 +182,18 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           maxLength={200}
           className="input-large mt-2 block w-full resize-none overflow-hidden border-none bg-transparent text-lg font-semibold leading-snug outline-none placeholder:text-faint"
         />
+
+        {jiraKey && notesParts.jira && (
+          <div className="mt-1 flex items-center gap-2 text-sm text-muted">
+            <JiraKeyBadge issueKey={jiraKey} />
+            <span className="min-w-0 flex-1 truncate">{notesParts.jira.summary.replace(/ · due .*/, "")}</span>
+            {notesParts.jira.url && (
+              <a href={notesParts.jira.url} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-accent">
+                Open in Jira <ExternalLink size={13} />
+              </a>
+            )}
+          </div>
+        )}
 
         {imported && (
           <p className="mt-2 flex items-start gap-1.5 rounded-md bg-surface px-3 py-2 text-xs text-muted">
@@ -329,7 +348,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
           <Repeat size={12} /> Repeat &amp; notes
           {!showMore && (draft.repeat || draft.notes) && (
             <span className="truncate font-normal normal-case tracking-normal text-faint">
-              {[draft.repeat && describeRepeat(draft.repeat), draft.notes && "notes added"].filter(Boolean).join(" · ")}
+              {[draft.repeat && describeRepeat(draft.repeat), notesParts.body && "notes added"].filter(Boolean).join(" · ")}
             </span>
           )}
           <ChevronDown size={14} className={`ml-auto shrink-0 transition-transform ${showMore ? "rotate-180" : ""}`} />
@@ -423,11 +442,13 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         {showMore && (
         <Labeled label="Notes" className="mt-3">
           <textarea
-            value={draft.notes}
-            onChange={(e) => set("notes", e.target.value)}
+            value={notesParts.body}
+            onChange={(e) =>
+              set("notes", notesParts.jira ? joinJiraNotes(e.target.value, notesParts.jira.lines) : e.target.value)
+            }
             rows={3}
             placeholder="Chapters, goals, links…"
-            className={`${inputClass} resize-none`}
+            className="block w-full resize-none rounded-md border border-line bg-canvas px-2 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
           />
         </Labeled>
         )}
@@ -435,27 +456,21 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         )}
 
         {!isNew && !deadline && (
-          <div className="mt-4 grid auto-cols-fr grid-flow-col gap-2 border-t border-line pt-4 [&>button]:justify-center">
+          <div className="mt-4 grid auto-cols-fr grid-flow-col gap-2 border-t border-line pt-4 [&>button]:justify-center [&>button]:whitespace-nowrap [&>button]:py-2.5">
             {initial.status === "planned" && (
               <>
                 <ActionButton onClick={() => changeStatus("active")} disabled={saving} tone="accent">
-                  <Play size={13} /> Start quest
+                  <Play size={15} /> Start
                 </ActionButton>
                 <ActionButton onClick={() => changeStatus("completed")} disabled={saving} tone="xp">
-                  <Check size={14} /> Mark complete
-                </ActionButton>
-                <ActionButton onClick={() => changeStatus("failed")} disabled={saving} tone="danger">
-                  <Flag size={13} /> Fail (−{failPenalty(assessment.xp)} XP)
+                  <Check size={16} /> Complete
                 </ActionButton>
               </>
             )}
             {initial.status === "active" && (
               <>
                 <ActionButton onClick={() => changeStatus("completed")} disabled={saving} tone="xp">
-                  <Check size={14} /> Complete
-                </ActionButton>
-                <ActionButton onClick={() => changeStatus("failed")} disabled={saving} tone="danger">
-                  <Flag size={13} /> Fail
+                  <Check size={16} /> Complete
                 </ActionButton>
               </>
             )}
@@ -481,6 +496,16 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
             >
               <Trash2 size={15} />
               {repeating && scope === "future" ? "This & upcoming" : <span className="sr-only">Delete</span>}
+            </button>
+          )}
+          {(initial.status === "planned" || initial.status === "active") && !isNew && !deadline && (
+            <button
+              type="button"
+              onClick={() => changeStatus("failed")}
+              disabled={saving}
+              className="flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-muted hover:bg-danger-soft hover:text-danger"
+            >
+              <Flag size={14} /> Fail{initial.status === "planned" && ` (−${failPenalty(assessment.xp)} XP)`}
             </button>
           )}
           <div className="flex-1" />
@@ -532,7 +557,7 @@ function ActionButton({
 }
 
 const inputClass =
-  "w-full rounded-md border border-line bg-canvas px-2 py-1 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft";
+  "block h-10 w-full min-w-0 appearance-none rounded-md border border-line bg-canvas px-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft";
 
 function Labeled({
   label,
