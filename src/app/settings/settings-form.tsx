@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  GraduationCap,
   Bell,
   Clock,
   Download,
@@ -27,6 +28,7 @@ import { IphoneLock } from "./iphone-lock";
 import { AppearanceSettings } from "./appearance-settings";
 import { JiraSettings } from "./jira-settings";
 import { TaskAppsSettings } from "./task-apps-settings";
+import { CanvasSettings } from "./canvas-settings";
 import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/client";
 import { CATEGORIES, CATEGORY_KEYS, type Category, type LockMode } from "@/lib/quests";
@@ -76,6 +78,7 @@ const NAV: { group: string; items: { id: string; label: string; icon: typeof Clo
   {
     group: "Integrations",
     items: [
+      { id: "canvas", label: "Canvas grades", icon: GraduationCap },
       { id: "jira", label: "Jira", icon: SquareKanban },
       { id: "task-apps", label: "Other task apps", icon: ListChecks },
     ],
@@ -371,6 +374,15 @@ export function SettingsForm({
           </Group>
 
           <Group title="Integrations">
+            <Card
+              id="canvas"
+              icon={GraduationCap}
+              title="Canvas grades"
+              description="See your marks against each boss you beat, your grades per subject in Insights, and use each assignment's real weighting for its estimate."
+            >
+              <CanvasSettings />
+            </Card>
+
             <Card
               id="jira"
               icon={SquareKanban}

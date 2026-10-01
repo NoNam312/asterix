@@ -97,6 +97,7 @@ import { MiniCalendar } from "./mini-calendar";
 import { DueSoon } from "./due-soon";
 import { JiraPanel } from "./jira-panel";
 import { TaskList } from "./task-list";
+import { assignmentIdOf, indexAssignments, type CanvasCourse } from "@/lib/canvas-grades";
 import { questFromTask, TASK_APPS, taskRefOf, type ExternalTask, type TaskProvider } from "@/lib/task-apps";
 import { MobileBossList, MobileJiraList } from "./mobile-lists";
 import { JiraStatusList } from "./jira-status";
@@ -196,6 +197,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [seriesById, setSeriesById] = useState<Map<string, QuestSeries>>(new Map());
   const [canRepeat, setCanRepeat] = useState(false);
+  // Canvas marks and weightings (if Canvas is connected in Settings), by assignment id.
+  const [canvas, setCanvas] = useState<ReturnType<typeof indexAssignments> | null>(null);
+
   // Tasks from other apps (Todoist, GitHub, Trello, Linear, Asana, ClickUp) connected in Settings.
   const [apps, setApps] = useState<{
     tasks: ExternalTask[];
@@ -290,7 +294,18 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     // These weeks are now cached too, so paging near today is instant.
     if (!near.error && nearRows.length < 5000) cache.store(nearFrom, nearTo, nearRows);
     const nearby = visible(nearRows);
-    const ctx = buildUrgencyContext(nearby, ((series.data ?? []) as { title: string }[]).map((r) => r.title), overrides);
+    // Canvas's real weighting for each due date it knows (matched by the assignment id in its link).
+    const canvasWeights = new Map<string, number>();
+    for (const q of nearby) {
+      const weight = isDeadline(q) ? canvas?.get(assignmentIdOf(q.notes) ?? "")?.weight : null;
+      if (weight) canvasWeights.set(q.id, weight);
+    }
+    const ctx = buildUrgencyContext(
+      nearby,
+      ((series.data ?? []) as { title: string }[]).map((r) => r.title),
+      overrides,
+      canvasWeights,
+    );
     setUrgency(ctx);
     const nearbyById = new Map(nearby.map((q) => [q.id, q]));
     const soon = addDays(today, DUE_SOON_DAYS).getTime();
@@ -311,7 +326,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     );
     setMetaLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache's functions are stable
-  }, [supabase]);
+  }, [supabase, canvas]);
 
   /** After a change: reload the visible range and everything else. */
   const refresh = useCallback(async () => {
@@ -374,6 +389,16 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   useEffect(() => {
     loadApps();
   }, [loadApps]);
+
+  // Once per visit. Setting it re-runs refreshMeta (it depends on it), so estimates pick it up.
+  useEffect(() => {
+    fetch("/api/canvas")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.connected && res.courses?.length) setCanvas(indexAssignments(res.courses as CanvasCourse[]));
+      })
+      .catch(() => undefined);
+  }, []);
 
   // Jira issues assigned to you (only if Jira is connected in Settings); reloaded after a status change.
   const loadJira = useCallback(() => {
@@ -1735,6 +1760,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
           progress={deadlineProgress(Object.values(byDay).flat(), urgency).find((p) => p.deadline.id === deadlineView.id)}
           onClose={() => setDeadlineView(null)}
           defeated={defeatedBosses.has(deadlineView.id)}
+          canvas={canvas?.get(assignmentIdOf(deadlineView.notes) ?? "") ?? null}
           canEstimate={estimatesReady}
           onSetEstimate={(minutes) => setEstimate(deadlineView, minutes)}
           onPlanWeek={() => planDeadline(deadlineView)}

@@ -181,7 +181,12 @@ function talkLength(text: string) {
  * How much work a due date needs, from its title and (for calendar due dates) its details, e.g.
  * Canvas's assignment description. Says which clue it used, so the guess can be explained.
  */
-export function estimateNeed(title: string, details?: string | null): Estimate {
+export function estimateNeed(
+  title: string,
+  details?: string | null,
+  /** The assignment's real share of the final mark, from Canvas. */
+  canvasWeight?: number | null,
+): Estimate {
   const text = (details ?? "").replace(/🔗 \S+/g, "");
   const both = `${title}\n${text}`;
   if (SMALL_TASK.test(title)) return { kind: "other", minutes: 60, basis: "Short task (reflection or evaluation)" };
@@ -191,8 +196,13 @@ export function estimateNeed(title: string, details?: string | null): Estimate {
 
   // Every clue found gives an estimate; the biggest wins (they rarely disagree by much).
   const options: { minutes: number; basis: string }[] = [];
-  const weight = weightOf(title, text);
-  if (weight) options.push({ minutes: round30(Math.min(100, weight) * 18), basis: `Worth ${weight}% of the grade` });
+  const weight = canvasWeight || weightOf(title, text);
+  if (weight) {
+    options.push({
+      minutes: round30(Math.min(100, weight) * 18),
+      basis: `Worth ${weight}% of the grade${canvasWeight ? " (from Canvas)" : ""}`,
+    });
+  }
   const words = wordsOf(both);
   if (words && words >= 300) {
     options.push({ minutes: round30((words / 400) * 60 + 120), basis: `About ${words.toLocaleString("en-AU")} words` });
@@ -228,12 +238,14 @@ export function buildUrgencyContext(
   subjectTitles: string[] = [],
   /** Estimates you've set yourself, by due date id (supabase/018_deadline_estimates.sql). */
   overrides: Map<string, number> = new Map(),
+  /** Each due date's share of the final mark from Canvas, by due date id. */
+  canvasWeights: Map<string, number> = new Map(),
 ): UrgencyContext {
   const subjects = buildSubjectIndex([...subjectTitles, ...quests.filter((q) => q.calendar_id).map((q) => q.title)]);
 
   const deadlines: Deadline[] = [];
   for (const q of quests) {
-    const guess = estimateNeed(q.title, isDeadline(q) ? q.notes : null);
+    const guess = estimateNeed(q.title, isDeadline(q) ? q.notes : null, canvasWeights.get(q.id));
     const exam = !isDeadline(q) && guess.kind === "exam" && q.status === "planned";
     const own = overrides.get(q.id);
     if (!isDeadline(q) && !exam) continue;

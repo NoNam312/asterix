@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, CalendarRange, Crown, ExternalLink, Flag, Plus, Swords, X } from "lucide-react";
+import { CalendarDays, CalendarRange, Crown, ExternalLink, Flag, GraduationCap, Plus, Swords, X } from "lucide-react";
+import { markLabel, type CanvasAssignment } from "@/lib/canvas-grades";
 import { bossOf } from "@/lib/boss";
 import { BossBar, hpLabel } from "./boss-bar";
 import { formatDuration, startOfDay } from "@/lib/dates";
@@ -38,6 +39,7 @@ export function DeadlineModal({
   defeated,
   canEstimate,
   onSetEstimate,
+  canvas,
 }: {
   quest: Quest;
   /** Calendar layer it came from. */
@@ -55,6 +57,8 @@ export function DeadlineModal({
   canEstimate: boolean;
   /** Your own estimate in minutes, or null to go back to the automatic guess. */
   onSetEstimate: (minutes: number | null) => void;
+  /** The matching Canvas assignment (mark, weighting), if Canvas is connected. */
+  canvas?: CanvasAssignment | null;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -139,6 +143,29 @@ export function DeadlineModal({
 
         {deadline && upcoming && !boss?.defeated && (
           <EstimateRow deadline={deadline} canEstimate={canEstimate} onSet={onSetEstimate} />
+        )}
+
+        {canvas && (canvas.score !== null || canvas.weight) && (
+          <div className="mt-3 flex items-center gap-3 rounded-lg bg-surface p-3">
+            <GraduationCap size={18} className="shrink-0 text-accent" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Canvas</p>
+              <p className="mt-0.5 text-sm">
+                {canvas.score !== null ? (
+                  <>
+                    Mark: <strong>{markLabel(canvas)}</strong>
+                    {canvas.grade && !/^\d/.test(canvas.grade) && <span className="text-muted"> · {canvas.grade}</span>}
+                  </>
+                ) : (
+                  <span className="text-muted">Not marked yet</span>
+                )}
+                {canvas.weight ? <span className="text-muted"> · worth {canvas.weight}% of the subject</span> : null}
+              </p>
+            </div>
+            <a href={canvas.url} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-accent hover:underline">
+              Open
+            </a>
+          </div>
         )}
 
         <div className="mt-3 rounded-lg bg-surface p-3">

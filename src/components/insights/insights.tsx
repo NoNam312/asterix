@@ -13,6 +13,7 @@ import { CATEGORIES } from "@/lib/quests";
 import { JIRA_COLOR } from "@/lib/jira-issues";
 import { describeStreak, streakInfo } from "@/lib/streak";
 import { AchievementCard } from "./achievement-badge";
+import { Grades } from "./grades";
 
 const noopSubscribe = () => () => {};
 const TREND_WEEKS = 8;
@@ -188,6 +189,8 @@ function InsightsView({ totalXp, goal }: { totalXp: number; goal: number }) {
             <Card title="Time vs plan" note={`Timed quests, last ${OVERRUN_DAYS / 7} weeks`}>
               <Overruns items={timing} tracking={history.tracksTime} />
             </Card>
+
+            <Grades />
 
             <Achievements list={achievements} fresh={fresh} />
           </>
