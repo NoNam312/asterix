@@ -10,6 +10,11 @@ export type NotificationPrefs = {
   notify_deadlines: boolean;
   notify_time_up: boolean;
   remind_minutes: number;
+  /** Morning brief and evening wrap-up (supabase/019_daily_briefs.sql); undefined before it's run. */
+  brief_morning?: boolean;
+  brief_morning_at?: string;
+  brief_evening?: boolean;
+  brief_evening_at?: string;
 };
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
@@ -174,6 +179,26 @@ export function NotificationSettings({ initial }: { initial: NotificationPrefs }
         <Toggle label="Before imported classes start" checked={prefs.notify_classes} onChange={(v) => update("notify_classes", v)} />
         <Toggle label="When a timed quest's time is up" checked={prefs.notify_time_up} onChange={(v) => update("notify_time_up", v)} />
         <Toggle label="The day before a due date" checked={prefs.notify_deadlines} onChange={(v) => update("notify_deadlines", v)} />
+        {prefs.brief_morning !== undefined && (
+          <>
+            <BriefRow
+              label="Morning brief"
+              hint="Today's quests and what's due next"
+              on={!!prefs.brief_morning}
+              at={prefs.brief_morning_at ?? "08:00"}
+              onToggle={(v) => update("brief_morning", v)}
+              onTime={(v) => update("brief_morning_at", v)}
+            />
+            <BriefRow
+              label="Evening wrap-up"
+              hint="What's left today and your XP so far"
+              on={!!prefs.brief_evening}
+              at={prefs.brief_evening_at ?? "21:00"}
+              onToggle={(v) => update("brief_evening", v)}
+              onTime={(v) => update("brief_evening_at", v)}
+            />
+          </>
+        )}
         <label className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
           Remind me
           <select
@@ -199,5 +224,41 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       {label}
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-[var(--color-accent)]" />
     </label>
+  );
+}
+
+function BriefRow({
+  label,
+  hint,
+  on,
+  at,
+  onToggle,
+  onTime,
+}: {
+  label: string;
+  hint: string;
+  on: boolean;
+  at: string;
+  onToggle: (v: boolean) => void;
+  onTime: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 text-sm">
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} className="size-4 shrink-0 accent-[var(--color-accent)]" />
+        <span className="min-w-0">
+          <span className="block">{label}</span>
+          <span className="block text-xs text-muted">{hint}</span>
+        </span>
+      </label>
+      <input
+        type="time"
+        value={at}
+        disabled={!on}
+        onChange={(e) => e.target.value && onTime(e.target.value)}
+        className="rounded-md border border-line bg-canvas px-2 py-1 text-sm disabled:opacity-50"
+        aria-label={`${label} time`}
+      />
+    </div>
   );
 }

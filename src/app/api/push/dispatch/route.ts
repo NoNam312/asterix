@@ -18,6 +18,8 @@ type Reminder = {
   time_zone: string;
 };
 
+type Brief = { kind: "morning" | "evening"; title: string; body: string; endpoint: string; p256dh: string; auth: string };
+
 function message(r: Reminder) {
   const time = (opts: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-AU", { timeZone: r.time_zone, ...opts }).format(new Date(r.start_at));
@@ -57,6 +59,16 @@ export async function POST(request: Request) {
     if (result === "sent") sent++;
     if (result === "gone") {
       await supabase.rpc("forget_push_endpoint", { p_secret: secret, p_endpoint: r.endpoint });
+      removed++;
+    }
+  }
+  // Morning brief and evening wrap-up (supabase/019_daily_briefs.sql). Skipped quietly until it's run.
+  const briefs = await supabase.rpc("claim_due_briefs", { p_secret: secret });
+  for (const b of (briefs.error ? [] : (briefs.data ?? [])) as Brief[]) {
+    const result = await sendPush(b, { title: b.title, body: b.body, tag: `brief-${b.kind}`, url: "/" });
+    if (result === "sent") sent++;
+    if (result === "gone") {
+      await supabase.rpc("forget_push_endpoint", { p_secret: secret, p_endpoint: b.endpoint });
       removed++;
     }
   }

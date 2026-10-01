@@ -30,6 +30,15 @@ export default async function SettingsPage() {
         notify_deadlines: profile?.notify_deadlines ?? true,
         notify_time_up: profile?.notify_time_up ?? true,
         remind_minutes: profile?.remind_minutes ?? 10,
+        // Present once 019_daily_briefs.sql has been run.
+        ...(profile && "brief_morning" in profile
+          ? {
+              brief_morning: profile.brief_morning,
+              brief_morning_at: String(profile.brief_morning_at).slice(0, 5),
+              brief_evening: profile.brief_evening,
+              brief_evening_at: String(profile.brief_evening_at).slice(0, 5),
+            }
+          : {}),
       }}
       needsMigration={!profile || !("blocked_sites" in profile)}
     />
