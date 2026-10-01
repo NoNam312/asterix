@@ -357,7 +357,7 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
         {showMore && canRepeat && (
           <div className="mt-2">
             <span className="mb-1 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted">
-              <Repeat size={11} /> Repeat
+              Repeat
             </span>
             <select
               value={repeatMode}
@@ -556,8 +556,10 @@ function ActionButton({
   );
 }
 
+// Same height for every field; date and time drop iOS's own styling so they fit their column,
+// while selects keep their arrow so they still look tappable.
 const inputClass =
-  "block h-10 w-full min-w-0 appearance-none rounded-md border border-line bg-canvas px-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft";
+  "block h-[42px] w-full min-w-0 rounded-md border border-line bg-canvas px-2 py-2 text-sm leading-6 outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft [&[type=date]]:appearance-none [&[type=time]]:appearance-none";
 
 function Labeled({
   label,
