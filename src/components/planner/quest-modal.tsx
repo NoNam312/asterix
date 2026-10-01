@@ -289,20 +289,21 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
               </button>
             );
           })}
-          {autoCategory && <span className="shrink-0 self-center text-[11px] text-faint">auto-detected</span>}
-          {!autoCategory &&
-            draft.title.trim() &&
-            assessment.suggestedCategory &&
-            assessment.suggestedCategory !== draft.category && (
-              <button
-                type="button"
-                onClick={() => set("category", assessment.suggestedCategory!)}
-                className="shrink-0 self-center text-[11px] text-accent hover:underline"
-              >
-                Looks like {CATEGORIES[assessment.suggestedCategory].label} · switch
-              </button>
-            )}
         </div>
+        {/* Under the chips, so it never runs off the end of the scrolling row. */}
+        {autoCategory && <p className="mt-1 text-[11px] text-faint">Category picked from the title</p>}
+        {!autoCategory &&
+          draft.title.trim() &&
+          assessment.suggestedCategory &&
+          assessment.suggestedCategory !== draft.category && (
+            <button
+              type="button"
+              onClick={() => set("category", assessment.suggestedCategory!)}
+              className="mt-1 text-[11px] text-accent hover:underline"
+            >
+              Looks like {CATEGORIES[assessment.suggestedCategory].label} · switch
+            </button>
+          )}
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Labeled label="Date" className="col-span-2 sm:col-span-1">
