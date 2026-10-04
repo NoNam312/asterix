@@ -36,7 +36,7 @@ export function JiraSubtasks({
   const today = startOfDay(new Date());
 
   return (
-    <div className={`min-w-0 basis-full overflow-hidden ${large ? "pl-9" : "pl-3"}`}>
+    <div className={`min-w-0 basis-full overflow-hidden ${large ? "pl-11" : "pl-6"}`}>
       {/* Subtask rows look like the issue rows above, just one small step in. */}
       <button
         type="button"
