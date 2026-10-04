@@ -1076,6 +1076,9 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             { label: "Fail quest", icon: <Flag />, onSelect: () => runStatus(q.id, "failed") },
           ]
         : [
+            ...(q.status === "failed"
+              ? [{ label: "I did it · mark complete", icon: <Check />, onSelect: () => runStatus(q.id, "completed") }]
+              : []),
             {
               label: q.status === "completed" ? "Undo complete" : "Undo fail",
               icon: <RotateCcw />,

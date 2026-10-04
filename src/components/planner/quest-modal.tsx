@@ -511,9 +511,15 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
                 </ActionButton>
               </>
             )}
+            {/* Did it after all: refunds the penalty and pays the quest's XP in one step. */}
+            {initial.status === "failed" && (
+              <ActionButton onClick={() => changeStatus("completed")} disabled={saving} tone="xp">
+                <Check size={16} /> I did it · complete
+              </ActionButton>
+            )}
             {finished && (
               <ActionButton onClick={() => changeStatus("planned")} disabled={saving} tone="muted">
-                <RotateCcw size={13} /> Undo ({initial.status === "completed" ? "removes the XP" : "back to planned"})
+                <RotateCcw size={13} /> {initial.status === "completed" ? "Undo (removes the XP)" : "Back to planned"}
               </ActionButton>
             )}
           </div>
