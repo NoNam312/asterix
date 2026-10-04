@@ -519,7 +519,12 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
     (async () => {
       const today = startOfDay(new Date());
       const yesterday = addDays(today, -1);
-      const { data } = await supabase.rpc("fail_missed_quests", { cutoff: today.toISOString() });
+      // Late-night quests (ending after 11pm) can still be ticked off until 9am the next morning;
+      // before then, only quests that ended before 11pm yesterday count as missed.
+      const now = new Date();
+      const grace = now.getTime() < addMinutes(today, 9 * 60).getTime();
+      const cutoff = grace ? addMinutes(yesterday, 23 * 60) : today;
+      const { data } = await supabase.rpc("fail_missed_quests", { cutoff: cutoff.toISOString() });
       const res = data as { missed: number; xp_lost: number; total_xp: number } | null;
       const seenToday = readStorage(SUMMARY_SEEN_KEY) === toDateInput(today);
       writeStorage(SUMMARY_SEEN_KEY, toDateInput(today));
