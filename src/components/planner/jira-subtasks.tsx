@@ -36,7 +36,7 @@ export function JiraSubtasks({
   const today = startOfDay(new Date());
 
   return (
-    <div className={`min-w-0 basis-full overflow-hidden ${large ? "pl-11" : "pl-4"}`}>
+    <div className={`min-w-0 basis-full overflow-hidden ${large ? "pl-9" : "pl-3"}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -47,7 +47,7 @@ export function JiraSubtasks({
         {subtasks.length} subtask{subtasks.length === 1 ? "" : "s"}
       </button>
       {open && (
-        <ul className={`mb-1.5 ml-1.5 border-l border-line pl-2 ${large ? "" : "space-y-0.5"}`}>
+        <ul className={`mb-1.5 ml-1 border-l border-line pl-1 ${large ? "" : "space-y-0.5"}`}>
           {subtasks.map((sub) => {
             const planAt = planned.get(sub.key);
             const next = planAt && planAt >= today ? planAt : undefined;
@@ -60,14 +60,14 @@ export function JiraSubtasks({
                   e.dataTransfer.setData("text/plain", `${sub.key}: ${sub.summary}`);
                   e.dataTransfer.effectAllowed = "copy";
                 }}
-                className="flex min-w-0 flex-wrap items-center gap-x-1.5 rounded-md hover:bg-surface-hover"
+                className="flex min-w-0 flex-wrap items-center gap-x-1 rounded-md hover:bg-surface-hover"
               >
                 <button
                   type="button"
                   onClick={() => setStatusFor((k) => (k === sub.key ? null : sub.key))}
                   aria-label={`Change status of ${sub.key} (${sub.status})`}
                   title={`${sub.status} · change status`}
-                  className={`grid shrink-0 place-items-center rounded-full hover:bg-surface ${large ? "size-7" : "size-5"}`}
+                  className={`grid shrink-0 place-items-center rounded-full hover:bg-surface ${large ? "size-7" : "size-4"}`}
                 >
                   <span
                     className={`rounded-full ${large ? "size-2" : "size-1.5"}`}
