@@ -16,6 +16,8 @@ export type JiraIssue = {
   url: string;
   /** Statuses it can move to right now, loaded with the issue so the status menu opens instantly. */
   transitions?: JiraTransition[];
+  /** For a subtask: the issue it belongs to. */
+  parent?: { key: string; summary: string; url: string } | null;
 };
 
 export type JiraTransition = { id: string; name: string; to: string; toCategory: string };
@@ -84,4 +86,29 @@ export function questFromIssue(issue: JiraIssue) {
     notes: `Jira ${issue.type ?? "issue"} in ${issue.project ?? "Jira"}${due}\n${issue.url}\n${jiraRef(issue.key)}`,
     duration: questMinutes(issue),
   };
+}
+
+/**
+ * The list as shown: your subtasks are folded under their parent. When the parent is in the list
+ * too it holds them; otherwise (it's someone else's) the parent's name is a header for them.
+ */
+export type JiraRow =
+  | { kind: "issue"; issue: JiraIssue; subtasks: JiraIssue[] }
+  | { kind: "parent"; parent: { key: string; summary: string; url: string }; subtasks: JiraIssue[] };
+
+export function groupIssues(issues: JiraIssue[]): JiraRow[] {
+  const listed = new Set(issues.map((i) => i.key));
+  const rows: JiraRow[] = [];
+  const byParent = new Map<string, JiraIssue[]>();
+  for (const i of issues) {
+    if (i.parent) byParent.set(i.parent.key, [...(byParent.get(i.parent.key) ?? []), i]);
+  }
+  for (const i of issues) {
+    if (i.parent) continue;
+    rows.push({ kind: "issue", issue: i, subtasks: byParent.get(i.key) ?? [] });
+  }
+  for (const [key, subs] of byParent) {
+    if (!listed.has(key)) rows.push({ kind: "parent", parent: subs[0].parent!, subtasks: subs });
+  }
+  return rows;
 }

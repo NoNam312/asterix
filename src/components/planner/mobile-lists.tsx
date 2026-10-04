@@ -4,7 +4,8 @@ import { useState } from "react";
 import { CalendarRange, Crown, ExternalLink, Swords } from "lucide-react";
 import { formatTime, startOfDay } from "@/lib/dates";
 import { bossOf } from "@/lib/boss";
-import { dueDate, withoutKey, type JiraIssue, type JiraTransition } from "@/lib/jira-issues";
+import { dueDate, groupIssues, withoutKey, type JiraIssue, type JiraTransition } from "@/lib/jira-issues";
+import { JiraSubtasks } from "./jira-subtasks";
 import { dueDay, isDeadline, type Quest } from "@/lib/quests";
 import type { DeadlineProgress } from "@/lib/urgency";
 import { BossBar, hpLabel } from "./boss-bar";
@@ -119,7 +120,33 @@ export function MobileJiraList({
   return (
     <div>
       <ul className="divide-y divide-line">
-        {sorted.map((issue) => {
+        {groupIssues(sorted).map((row) => {
+          if (row.kind === "parent") {
+            // Someone else's issue that has subtasks of yours: its name heads them.
+            return (
+              <li key={`parent-${row.parent.key}`} className="flex flex-wrap items-center px-4 py-2">
+                <a
+                  href={row.parent.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-11 text-sm text-muted"
+                >
+                  <span className="shrink-0">{row.parent.key}</span>
+                  <span className="min-w-0 flex-1 truncate">{row.parent.summary}</span>
+                </a>
+                <JiraSubtasks
+                  subtasks={row.subtasks}
+                  planned={planned}
+                  large
+                  startOpen
+                  onPlan={onPlan}
+                  onStatusChanged={onStatusChanged}
+                  onStatusFailed={onStatusFailed}
+                />
+              </li>
+            );
+          }
+          const issue = row.issue;
           const planAt = planned.get(issue.key);
           const next = planAt && planAt >= today ? planAt : undefined;
           const days = issue.due ? daysFromToday(dueDate(issue.due)) : null;
@@ -176,6 +203,14 @@ export function MobileJiraList({
                   />
                 </div>
               )}
+              <JiraSubtasks
+                subtasks={row.subtasks}
+                planned={planned}
+                large
+                onPlan={onPlan}
+                onStatusChanged={onStatusChanged}
+                onStatusFailed={onStatusFailed}
+              />
             </li>
           );
         })}

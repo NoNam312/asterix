@@ -75,10 +75,11 @@ type RawIssue = {
     status?: { name?: string; statusCategory?: { key?: string } };
     duedate?: string | null;
     priority?: { name?: string } | null;
-    issuetype?: { name?: string } | null;
+    issuetype?: { name?: string; subtask?: boolean } | null;
     project?: { key?: string; name?: string } | null;
     timeestimate?: number | null;
     timeoriginalestimate?: number | null;
+    parent?: { key?: string; fields?: { summary?: string } } | null;
   };
   transitions?: RawTransition[];
 };
@@ -100,7 +101,7 @@ export async function searchIssues(conn: JiraConnection, max = 50): Promise<Jira
     body: JSON.stringify({
       jql: conn.jql,
       maxResults: max,
-      fields: ["summary", "status", "duedate", "priority", "issuetype", "project", "timeestimate", "timeoriginalestimate"],
+      fields: ["summary", "status", "duedate", "priority", "issuetype", "project", "timeestimate", "timeoriginalestimate", "parent"],
       // Each issue's possible status changes, so the status menu doesn't have to ask Jira again.
       expand: "transitions",
     }),
@@ -119,6 +120,10 @@ export async function searchIssues(conn: JiraConnection, max = 50): Promise<Jira
       estimateMin: seconds ? Math.round(seconds / 60) : null,
       url: `${conn.site}/browse/${encodeURIComponent(key)}`,
       transitions: transitions?.map(toTransition),
+      // Only real subtasks are grouped under their parent (a task's parent is usually an epic).
+      parent: f.issuetype?.subtask && f.parent?.key
+        ? { key: f.parent.key, summary: f.parent.fields?.summary ?? f.parent.key, url: `${conn.site}/browse/${encodeURIComponent(f.parent.key)}` }
+        : null,
     };
   });
 }

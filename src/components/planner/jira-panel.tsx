@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ExternalLink, GripVertical } from "lucide-react";
 import { formatTime, startOfDay } from "@/lib/dates";
-import { dueDate, JIRA_DRAG_TYPE, type JiraIssue, type JiraTransition } from "@/lib/jira-issues";
+import { dueDate, groupIssues, JIRA_DRAG_TYPE, type JiraIssue, type JiraTransition } from "@/lib/jira-issues";
+import { JiraSubtasks } from "./jira-subtasks";
 import { JiraStatusList, STATUS_COLORS } from "./jira-status";
 
 const DAY = 86_400_000;
@@ -51,7 +52,9 @@ export function JiraPanel({
   const sorted = [...issues].sort(
     (a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.key.localeCompare(b.key),
   );
-  const shown = expanded || hideTitle ? sorted : sorted.slice(0, 5);
+  // Your subtasks are folded under their parent.
+  const rows = groupIssues(sorted);
+  const shown = expanded || hideTitle ? rows : rows.slice(0, 5);
 
   return (
     <div>
@@ -67,7 +70,35 @@ export function JiraPanel({
       {error && <p className="px-1 pt-1 text-[11px] text-danger">{error}</p>}
       {!error && issues.length === 0 && <p className="px-1 pt-1 text-[11px] text-faint">Nothing assigned to you. Nice.</p>}
       <ul className="mt-1 space-y-0.5">
-        {shown.map((issue) => {
+        {shown.map((row) => {
+          if (row.kind === "parent") {
+            // Someone else's issue that has subtasks of yours: its name heads them.
+            return (
+              <li key={`parent-${row.parent.key}`} className="flex flex-wrap items-center gap-x-1 rounded-md px-1">
+                <a
+                  href={row.parent.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${row.parent.key}: ${row.parent.summary} (not assigned to you)`}
+                  className={`flex min-w-0 flex-1 items-center gap-1.5 text-muted hover:text-ink ${draggable ? "py-1 pl-5 text-xs" : "py-2 pl-9 text-sm"}`}
+                >
+                  <span className="shrink-0">{row.parent.key}</span>
+                  <span className="min-w-0 flex-1 truncate">{row.parent.summary}</span>
+                </a>
+                <JiraSubtasks
+                  subtasks={row.subtasks}
+                  planned={planned}
+                  large={!draggable}
+                  draggable={draggable}
+                  startOpen
+                  onPlan={onPlan}
+                  onStatusChanged={onStatusChanged}
+                  onStatusFailed={onStatusFailed}
+                />
+              </li>
+            );
+          }
+          const issue = row.issue;
           const due = dueLabel(issue.due);
           const planAt = planned.get(issue.key);
           // Only upcoming plans; yesterday's unfinished quest doesn't count.
@@ -148,13 +179,22 @@ export function JiraPanel({
                   />
                 </div>
               )}
+              <JiraSubtasks
+                subtasks={row.subtasks}
+                planned={planned}
+                large={!draggable}
+                draggable={draggable}
+                onPlan={onPlan}
+                onStatusChanged={onStatusChanged}
+                onStatusFailed={onStatusFailed}
+              />
             </li>
           );
         })}
       </ul>
-      {sorted.length > 5 && !hideTitle && (
+      {rows.length > 5 && !hideTitle && (
         <button onClick={() => setExpanded((x) => !x)} className="mt-0.5 px-1 text-[11px] text-accent hover:underline">
-          {expanded ? "Show fewer" : `Show all ${sorted.length}`}
+          {expanded ? "Show fewer" : `Show all ${rows.length}`}
         </button>
       )}
     </div>
