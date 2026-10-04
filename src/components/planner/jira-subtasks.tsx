@@ -37,6 +37,7 @@ export function JiraSubtasks({
 
   return (
     <div className={`min-w-0 basis-full overflow-hidden ${large ? "pl-9" : "pl-3"}`}>
+      {/* Subtask rows look like the issue rows above, just one small step in. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -47,7 +48,7 @@ export function JiraSubtasks({
         {subtasks.length} subtask{subtasks.length === 1 ? "" : "s"}
       </button>
       {open && (
-        <ul className={`mb-1.5 ml-1 border-l border-line pl-1 ${large ? "" : "space-y-0.5"}`}>
+        <ul className="mb-1">
           {subtasks.map((sub) => {
             const planAt = planned.get(sub.key);
             const next = planAt && planAt >= today ? planAt : undefined;
@@ -79,10 +80,9 @@ export function JiraSubtasks({
                   title={`${sub.key}: ${sub.summary}\n${sub.status}`}
                   className={`min-w-0 flex-1 text-left ${large ? "py-1.5 text-sm" : "py-1 text-xs"}`}
                 >
-                  {/* Two lines for the title: the sidebar is narrow. */}
-                  <span className="flex items-start gap-1.5">
+                  <span className="flex items-center gap-1.5">
                     <span className="shrink-0 text-muted">{sub.key}</span>
-                    <span className="line-clamp-2 min-w-0 flex-1 leading-snug">{sub.summary}</span>
+                    <span className="min-w-0 flex-1 truncate">{sub.summary}</span>
                   </span>
                   {next && (
                     <span className="block truncate text-[10px] text-xp">
