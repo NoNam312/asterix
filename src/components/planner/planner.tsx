@@ -74,6 +74,7 @@ import {
   CATEGORIES,
   CATEGORY_KEYS,
   dueAt,
+  failRevisableUntil,
   shortTitle,
   isDeadline,
   type CalendarLayer,
@@ -1033,6 +1034,8 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
   function questMenuItems(q: Quest): MenuItem[] {
     const start = new Date(q.start_at);
     const finished = q.status === "completed" || q.status === "failed";
+    // Failed quests can be changed until 9am the morning after their day.
+    const failOpen = nowMs < failRevisableUntil(q).getTime();
     if (isDeadline(q)) return deadlineMenuItems(q);
     if (q.calendar_id) {
       // Imported classes follow their feed: status actions only, plus dropping the whole series.
@@ -1076,12 +1079,13 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
             { label: "Fail quest", icon: <Flag />, onSelect: () => runStatus(q.id, "failed") },
           ]
         : [
-            ...(q.status === "failed"
+            ...(q.status === "failed" && failOpen
               ? [{ label: "I did it · mark complete", icon: <Check />, onSelect: () => runStatus(q.id, "completed") }]
               : []),
             {
-              label: q.status === "completed" ? "Undo complete" : "Undo fail",
+              label: q.status === "completed" ? "Undo complete" : failOpen ? "Undo fail" : "Fail is final (after 9am next day)",
               icon: <RotateCcw />,
+              disabled: q.status === "failed" && !failOpen,
               onSelect: () => runStatus(q.id, "planned"),
             },
           ]),

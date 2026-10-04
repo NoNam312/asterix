@@ -101,6 +101,15 @@ export const CATEGORIES: Record<Category, { label: string; color: string; soft: 
 
 export const CATEGORY_KEYS = Object.keys(CATEGORIES) as Category[];
 
+/**
+ * Until when a failed quest can still be changed (marked done after all, or put back): 9am the
+ * morning after the day it was scheduled. After that a fail is final.
+ */
+export function failRevisableUntil(q: Pick<Quest, "start_at">) {
+  const start = new Date(q.start_at);
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1, 9, 0);
+}
+
 export function questEnd(q: Pick<Quest, "start_at" | "duration_min">) {
   return new Date(new Date(q.start_at).getTime() + q.duration_min * 60_000);
 }

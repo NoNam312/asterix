@@ -9,7 +9,7 @@ import { splitTaskNotes, TASK_APPS } from "@/lib/task-apps";
 import { TaskBadge } from "./task-badge";
 import { formatDuration } from "@/lib/dates";
 import { assessQuest } from "@/lib/difficulty";
-import { CATEGORIES, CATEGORY_KEYS, type Category, type QuestStatus } from "@/lib/quests";
+import { CATEGORIES, CATEGORY_KEYS, failRevisableUntil, type Category, type QuestStatus } from "@/lib/quests";
 import { ScorePanel } from "./score-panel";
 import { scoreQuest, type UrgencyContext } from "@/lib/urgency";
 import {
@@ -117,6 +117,8 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
   }
 
   const finished = initial.status === "completed" || initial.status === "failed";
+  // A failed quest can be changed until 9am the morning after its day.
+  const failOpen = new Date() < failRevisableUntil({ start_at: new Date(`${initial.date}T${initial.time}`).toISOString() });
   // Jira quests: the issue's lines are shown as a Jira row; the notes box holds only the user's text.
   const jiraParts = splitJiraNotes(draft.notes);
   const taskParts = jiraParts.jira ? null : splitTaskNotes(draft.notes);
@@ -511,16 +513,21 @@ export function QuestModal({ draft: initial, onClose, onSave, onDelete, onStatus
                 </ActionButton>
               </>
             )}
-            {/* Did it after all: refunds the penalty and pays the quest's XP in one step. */}
-            {initial.status === "failed" && (
+            {/* Did it after all: refunds the penalty and pays the quest's XP in one step (until 9am next morning). */}
+            {initial.status === "failed" && failOpen && (
               <ActionButton onClick={() => changeStatus("completed")} disabled={saving} tone="xp">
                 <Check size={16} /> I did it · complete
               </ActionButton>
             )}
-            {finished && (
+            {finished && (initial.status === "completed" || failOpen) && (
               <ActionButton onClick={() => changeStatus("planned")} disabled={saving} tone="muted">
                 <RotateCcw size={13} /> {initial.status === "completed" ? "Undo (removes the XP)" : "Back to planned"}
               </ActionButton>
+            )}
+            {initial.status === "failed" && !failOpen && (
+              <p className="text-xs text-muted">
+                This fail is final: failed quests can only be changed until 9am the morning after.
+              </p>
             )}
           </div>
         )}
