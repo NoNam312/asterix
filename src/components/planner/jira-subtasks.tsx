@@ -36,18 +36,18 @@ export function JiraSubtasks({
   const today = startOfDay(new Date());
 
   return (
-    <div className={`basis-full ${large ? "pl-11" : "pl-5"}`}>
+    <div className={`min-w-0 basis-full overflow-hidden ${large ? "pl-11" : "pl-4"}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className={`flex items-center gap-1 text-muted hover:text-ink ${large ? "py-1 text-xs" : "text-[11px]"}`}
+        className={`flex items-center gap-1 text-muted hover:text-ink ${large ? "py-1 text-xs" : "py-1 text-[11px]"}`}
       >
         <ChevronRight size={large ? 14 : 12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
         {subtasks.length} subtask{subtasks.length === 1 ? "" : "s"}
       </button>
       {open && (
-        <ul className="mb-1 ml-1.5 border-l border-line pl-2">
+        <ul className={`mb-1.5 ml-1.5 border-l border-line pl-2 ${large ? "" : "space-y-0.5"}`}>
           {subtasks.map((sub) => {
             const planAt = planned.get(sub.key);
             const next = planAt && planAt >= today ? planAt : undefined;
@@ -60,14 +60,14 @@ export function JiraSubtasks({
                   e.dataTransfer.setData("text/plain", `${sub.key}: ${sub.summary}`);
                   e.dataTransfer.effectAllowed = "copy";
                 }}
-                className="flex flex-wrap items-center gap-x-1"
+                className="flex min-w-0 flex-wrap items-center gap-x-1.5 rounded-md hover:bg-surface-hover"
               >
                 <button
                   type="button"
                   onClick={() => setStatusFor((k) => (k === sub.key ? null : sub.key))}
                   aria-label={`Change status of ${sub.key} (${sub.status})`}
                   title={`${sub.status} · change status`}
-                  className={`grid shrink-0 place-items-center rounded-full hover:bg-surface ${large ? "size-7" : "size-4"}`}
+                  className={`grid shrink-0 place-items-center rounded-full hover:bg-surface ${large ? "size-7" : "size-5"}`}
                 >
                   <span
                     className={`rounded-full ${large ? "size-2" : "size-1.5"}`}
@@ -77,11 +77,12 @@ export function JiraSubtasks({
                 <button
                   onClick={() => onPlan(sub)}
                   title={`${sub.key}: ${sub.summary}\n${sub.status}`}
-                  className={`min-w-0 flex-1 text-left ${large ? "py-1.5 text-sm" : "py-0.5 text-xs"}`}
+                  className={`min-w-0 flex-1 text-left ${large ? "py-1.5 text-sm" : "py-1 text-xs"}`}
                 >
-                  <span className="flex items-center gap-1.5">
+                  {/* Two lines for the title: the sidebar is narrow. */}
+                  <span className="flex items-start gap-1.5">
                     <span className="shrink-0 text-muted">{sub.key}</span>
-                    <span className="min-w-0 flex-1 truncate">{sub.summary}</span>
+                    <span className="line-clamp-2 min-w-0 flex-1 leading-snug">{sub.summary}</span>
                   </span>
                   {next && (
                     <span className="block truncate text-[10px] text-xp">

@@ -1443,7 +1443,7 @@ function PlannerView({ profile: initialProfile }: { profile: Profile }) {
               );
             })}
           </div>
-          <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+          <div className="mt-2 min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
             {sideTab === "due" ? (
               dueSoon.length ? (
                 <DueSoon items={dueSoon} layers={layerMap} onOpen={openEdit} onPlan={() => setPlanOpen(true)} onMenu={(quest, x, y) => setMenu({ kind: "deadline", quest, x, y })} defeated={defeatedBosses} hideTitle />
